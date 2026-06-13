@@ -236,13 +236,39 @@ def make_item(title, link, desc, source, pub_raw, itype):
     }
 
 def dedup(items: list, limit=50) -> list:
-    seen, out = set(), []
+    seen_url, seen_title, out = set(), set(), []
     for it in items:
-        key = re.sub(r"\s+","",it["title"])[:28]
-        if key and key not in seen:
-            seen.add(key); out.append(it)
+        # URL 중복: 쿼리파라미터 제거 후 비교
+        url_key = re.sub(r'[?#&].*$', '', it.get("link", "")).rstrip("/")
+        # 제목 중복: 공백·특수문자 제거 후 앞 30자
+        title_key = re.sub(r'[\s\W]', '', it.get("title", "")).lower()[:30]
+        if url_key and url_key in seen_url: continue
+        if title_key and title_key in seen_title: continue
+        if url_key: seen_url.add(url_key)
+        if title_key: seen_title.add(title_key)
+        out.append(it)
         if len(out) >= limit: break
     return out
+
+def score_relevance(item: dict, query: str, expanded_terms: list[str]) -> int:
+    title = item.get("title", "").lower()
+    desc  = item.get("description", "").lower()
+    q     = query.lower()
+    score = 0
+    # 제목에 주요 키워드 포함 → 고점
+    if q in title:
+        score += 10
+    elif all(w in title for w in q.split() if len(w) > 1):
+        score += 6
+    # 설명에 주요 키워드 포함
+    if q in desc:
+        score += 3
+    # 확장 키워드 보너스
+    for term in expanded_terms:
+        t = term.lower()
+        if t in title: score += 2
+        if t in desc:  score += 1
+    return score
 
 def sort_by_date(items: list) -> list:
     return sorted(items, key=lambda x: x.get("_dt",0), reverse=True)
@@ -461,19 +487,31 @@ async def blog_naver_scrape(query: str, client: httpx.AsyncClient) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 #  파이프라인
 # ══════════════════════════════════════════════════════════════════════════════
+def filter_by_relevance(items: list, query: str, min_score: int = 3) -> list:
+    expanded = KEYWORD_EXPAND.get(query, [])
+    scored = [(score_relevance(it, query, expanded), it) for it in items]
+    # 점수 0이어도 날짜가 있고 키워드가 한 글자짜리면 통과 (단어 검색 예외)
+    if len(query) <= 2:
+        min_score = 0
+    return [it for sc, it in scored if sc >= min_score]
+
 async def pipeline_news(query: str) -> list:
     async with httpx.AsyncClient(follow_redirects=True) as client:
         g,n,d = await asyncio.gather(news_google_rss(query,client),
                                       news_naver_api(query,client),
                                       news_daum(query,client))
-    return dedup(sort_by_date(g+n+d), limit=50)
+    all_items = sort_by_date(g+n+d)
+    relevant  = filter_by_relevance(all_items, query)
+    return dedup(relevant, limit=50)
 
 async def pipeline_blog(query: str) -> list:
     async with httpx.AsyncClient(follow_redirects=True) as client:
         na,gb,ns = await asyncio.gather(blog_naver_api(query,client),
                                          blog_google_rss(query,client),
                                          blog_naver_scrape(query,client))
-    return dedup(sort_by_date(na+gb+ns), limit=50)
+    all_items = sort_by_date(na+gb+ns)
+    relevant  = filter_by_relevance(all_items, query, min_score=2)
+    return dedup(relevant, limit=50)
 
 # ══════════════════════════════════════════════════════════════════════════════
 app = FastAPI()
