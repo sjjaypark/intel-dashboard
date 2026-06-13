@@ -3,7 +3,7 @@ Intelligence Dashboard - Backend v5
 실행: python -m uvicorn app:app --port 8000
 """
 
-import os, re, asyncio, logging, xml.etree.ElementTree as ET
+import os, re, asyncio, logging, time, io, zipfile, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 
@@ -571,20 +571,50 @@ def _fmtd(s: str) -> str:
         return f"{s[:4]}.{s[4:6]}.{s[6:]}"
     return s or "-"
 
+# DART 기업코드 인메모리 캐시 (Lambda 인스턴스 내 재사용)
+_dart_cache: dict[str, tuple[str,str]] = {}   # corp_name → (corp_code, stock_code)
+_dart_cache_ts: float = 0.0
+
+async def _load_dart_cache(client) -> None:
+    global _dart_cache, _dart_cache_ts
+    if _dart_cache and time.time() - _dart_cache_ts < 86400:
+        return
+    if not DART_API_KEY:
+        return
+    try:
+        logger.info("DART 기업코드 목록 다운로드 중...")
+        r = await client.get(
+            "https://opendart.fss.or.kr/api/corpCode.xml",
+            params={"crtfc_key": DART_API_KEY}, timeout=30.0,
+        )
+        zf   = zipfile.ZipFile(io.BytesIO(r.content))
+        xml  = zf.read("CORPCODE.xml")
+        root = ET.fromstring(xml)
+        tmp  = {}
+        for item in root.findall(".//list"):
+            nm = (item.findtext("corp_name") or "").strip()
+            cc = (item.findtext("corp_code") or "").strip()
+            sc = (item.findtext("stock_code") or "").strip()
+            if nm and cc:
+                tmp[nm] = (cc, sc)
+        _dart_cache    = tmp
+        _dart_cache_ts = time.time()
+        logger.info(f"DART 기업코드 캐시 완료: {len(tmp)}개")
+    except Exception as e:
+        logger.warning(f"DART cache load: {e}")
+
 async def _dart_search(name: str, client) -> tuple[str,str]:
     if not DART_API_KEY: return "",""
-    try:
-        r = await client.get("https://opendart.fss.or.kr/api/company.json",
-            params={"crtfc_key":DART_API_KEY,"corp_name":name}, timeout=8.0)
-        d = r.json()
-        if d.get("status") != "000": return "",""
-        corps = d.get("results",[])
-        for c in corps:
-            if c.get("corp_name") == name:
-                return c.get("corp_code",""), (c.get("stock_code","") or "").strip()
-        if corps:
-            return corps[0].get("corp_code",""), (corps[0].get("stock_code","") or "").strip()
-    except Exception as e: logger.warning(f"DART search: {e}")
+    await _load_dart_cache(client)
+    if not _dart_cache: return "",""
+    # 정확 매칭
+    if name in _dart_cache:
+        return _dart_cache[name]
+    # 부분 매칭 (짧은 이름 우선)
+    matches = [(k,v) for k,v in _dart_cache.items() if name in k or k in name]
+    if matches:
+        matches.sort(key=lambda x: len(x[0]))
+        return matches[0][1]
     return "",""
 
 async def _dart_info(corp_code: str, client) -> dict:
