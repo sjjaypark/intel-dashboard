@@ -423,6 +423,7 @@ function renderCompanyOverview(d) {
   const af = d.annual_fs  || [];
   const qf = d.quarter_fs || [];
   const sh = d.shareholders || [];
+  const bi = d.biz_info    || {};
   const hasDart = d.has_dart;
 
   const priceColor = sd.up ? 'text-red-500' : 'text-blue-600';
@@ -490,8 +491,8 @@ function renderCompanyOverview(d) {
       <span class="text-sm font-bold text-ink">${esc(sd[k]||'-')}</span>
     </div>`).join('');
 
-  // 주주현황 테이블
-  const holdersHtml = sh.length ? `
+  // 주주현황 테이블 (collapsible)
+  const holdersTable = sh.length ? `
     <table class="w-full text-xs">
       <thead><tr class="bg-surface-muted">
         <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">주주명</th>
@@ -508,6 +509,46 @@ function renderCompanyOverview(d) {
         </tr>`).join('')}
       </tbody>
     </table>` : `<div class="px-4 py-4 text-center text-xs text-ink-subtle">주주 데이터 없음</div>`;
+
+  // 사업정보 섹션
+  const overviewHtml = bi.overview ? `
+    <div class="px-5 py-4">
+      <p class="text-xs text-ink leading-relaxed">${esc(bi.overview)}</p>
+    </div>` : `<div class="px-5 py-4 text-xs text-ink-subtle">사업 개요 정보 없음</div>`;
+
+  const productsHtml = (bi.products && bi.products.length) ? `
+    <div class="overflow-x-auto px-5 pb-4">
+      <table class="w-full text-xs border-collapse">
+        <thead><tr class="bg-surface-muted">
+          <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">제품/서비스</th>
+          <th class="text-right px-3 py-1.5 font-semibold text-ink-muted">매출 비중</th>
+          <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">비고</th>
+        </tr></thead>
+        <tbody>${bi.products.map(p=>`
+          <tr class="border-t border-surface-border hover:bg-surface-muted/40">
+            <td class="px-3 py-1.5 font-medium text-ink">${esc(p.name)}</td>
+            <td class="px-3 py-1.5 text-right font-mono text-primary font-semibold">${esc(p.ratio)}</td>
+            <td class="px-3 py-1.5 text-ink-muted">${esc(p.detail||'')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `<div class="px-5 pb-4 text-xs text-ink-subtle">제품/서비스 데이터 없음</div>`;
+
+  const segmentsHtml = (bi.segments && bi.segments.length) ? `
+    <div class="overflow-x-auto px-5 pb-4">
+      <table class="w-full text-xs border-collapse">
+        <thead><tr class="bg-surface-muted">
+          <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">사업부문</th>
+          <th class="text-right px-3 py-1.5 font-semibold text-ink-muted">매출 비중</th>
+        </tr></thead>
+        <tbody>${bi.segments.map(s=>`
+          <tr class="border-t border-surface-border hover:bg-surface-muted/40">
+            <td class="px-3 py-1.5 font-medium text-ink">${esc(s.name)}</td>
+            <td class="px-3 py-1.5 text-right font-mono text-primary font-semibold">${esc(s.ratio)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
 
   const panel = document.getElementById('companyPanel');
   panel.innerHTML = `
@@ -568,18 +609,39 @@ function renderCompanyOverview(d) {
         <div id="fsTableArea" class="mt-2 pb-1"></div>
       </div>
 
-      <!-- 주주현황 -->
-      <div>
-        <div class="px-5 py-2 border-b border-surface-border">
-          <span class="text-[10px] font-bold text-ink-subtle uppercase tracking-widest">최대주주 현황</span>
+      <!-- 사업정보 탭 -->
+      <div class="border-b border-surface-border">
+        <div class="flex gap-1 px-5 pt-3 pb-1">
+          <button id="bizTabOverview" onclick="switchBizTab('overview')"
+            class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white">주요사업</button>
+          <button id="bizTabProducts" onclick="switchBizTab('products')"
+            class="px-3 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:bg-surface-muted">제품/서비스</button>
+          ${(bi.segments && bi.segments.length) ? `
+          <button id="bizTabSegments" onclick="switchBizTab('segments')"
+            class="px-3 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:bg-surface-muted">매출 비중</button>` : ''}
         </div>
-        ${holdersHtml}
+        <div id="bizTabContent">
+          ${overviewHtml}
+        </div>
+      </div>
+
+      <!-- 주주현황 (collapsible) -->
+      <div>
+        <button onclick="toggleHolders()" class="w-full flex items-center justify-between px-5 py-2.5 border-b border-surface-border hover:bg-surface-muted/50 transition-colors">
+          <span class="text-[10px] font-bold text-ink-subtle uppercase tracking-widest">최대주주 현황</span>
+          <span id="holdersChevron" class="text-ink-subtle text-xs">▼</span>
+        </button>
+        <div id="holdersBody" class="hidden">
+          ${holdersTable}
+        </div>
       </div>
     </div>`;
 
   // 재무 테이블 상태
   window._fsData = { annual: af, quarter: qf, tab: 'annual', section: 'IS' };
   renderFsTable();
+  // 사업정보 탭 상태
+  window._bizData = { overview: bi.overview||'', products: bi.products||[], segments: bi.segments||[] };
   panel.classList.remove('hidden');
 }
 
@@ -629,6 +691,69 @@ function renderFsTable() {
       }).join('')}</tbody>
     </table>
   </div>`;
+}
+
+// 사업정보 탭 전환
+window._bizData = { overview:'', products:[], segments:[] };
+function switchBizTab(tab) {
+  const bd = window._bizData;
+  const content = document.getElementById('bizTabContent');
+  if (!content) return;
+  ['overview','products','segments'].forEach(t => {
+    const btn = document.getElementById('bizTab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (btn) btn.className = t === tab
+      ? 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white'
+      : 'px-3 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:bg-surface-muted';
+  });
+  if (tab === 'overview') {
+    content.innerHTML = bd.overview
+      ? `<div class="px-5 py-4"><p class="text-xs text-ink leading-relaxed">${esc(bd.overview)}</p></div>`
+      : `<div class="px-5 py-4 text-xs text-ink-subtle">사업 개요 정보 없음</div>`;
+  } else if (tab === 'products') {
+    content.innerHTML = (bd.products && bd.products.length)
+      ? `<div class="overflow-x-auto px-5 pb-4">
+          <table class="w-full text-xs border-collapse">
+            <thead><tr class="bg-surface-muted">
+              <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">제품/서비스</th>
+              <th class="text-right px-3 py-1.5 font-semibold text-ink-muted">비중</th>
+              <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">비고</th>
+            </tr></thead>
+            <tbody>${bd.products.map(p=>`
+              <tr class="border-t border-surface-border hover:bg-surface-muted/40">
+                <td class="px-3 py-1.5 font-medium text-ink">${esc(p.name)}</td>
+                <td class="px-3 py-1.5 text-right font-mono text-primary font-semibold">${esc(p.ratio)}</td>
+                <td class="px-3 py-1.5 text-ink-muted">${esc(p.detail||'')}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+      : `<div class="px-5 pb-4 pt-4 text-xs text-ink-subtle">제품/서비스 데이터 없음</div>`;
+  } else if (tab === 'segments') {
+    content.innerHTML = (bd.segments && bd.segments.length)
+      ? `<div class="overflow-x-auto px-5 pb-4">
+          <table class="w-full text-xs border-collapse">
+            <thead><tr class="bg-surface-muted">
+              <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">사업부문</th>
+              <th class="text-right px-3 py-1.5 font-semibold text-ink-muted">매출 비중</th>
+            </tr></thead>
+            <tbody>${bd.segments.map(s=>`
+              <tr class="border-t border-surface-border hover:bg-surface-muted/40">
+                <td class="px-3 py-1.5 font-medium text-ink">${esc(s.name)}</td>
+                <td class="px-3 py-1.5 text-right font-mono text-primary font-semibold">${esc(s.ratio)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+      : `<div class="px-5 pb-4 pt-4 text-xs text-ink-subtle">부문별 매출 데이터 없음</div>`;
+  }
+}
+
+function toggleHolders() {
+  const body = document.getElementById('holdersBody');
+  const chev = document.getElementById('holdersChevron');
+  if (!body) return;
+  const hidden = body.classList.toggle('hidden');
+  if (chev) chev.textContent = hidden ? '▼' : '▲';
 }
 
 function showSkeleton() {

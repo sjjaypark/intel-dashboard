@@ -713,6 +713,87 @@ async def _dart_holders(corp_code: str, year: int, client) -> list:
                 for s in d.get("list",[])]
     except Exception as e: logger.warning(f"DART holders: {e}"); return []
 
+async def _naver_biz_info(code: str, client) -> dict:
+    """네이버 증권 기업개요·주요제품 스크래핑 (상장사)"""
+    result = {"overview": "", "products": [], "segments": []}
+    if not code: return result
+    hdrs = {**HEADERS, "Referer": "https://finance.naver.com/"}
+    try:
+        r = await client.get(
+            f"https://finance.naver.com/item/coinfo.naver?code={code}&target=company",
+            headers=hdrs, timeout=10.0)
+        soup = BeautifulSoup(r.content, "html.parser")
+        # 기업개요 텍스트
+        for sel in ["p.summary_info", "div.summary_info", "td.coinfo_body p",
+                    "table.tb_type1.tb_co td p", "div.coinfo_top p",
+                    "div#content p", "td p"]:
+            tag = soup.select_one(sel)
+            if tag:
+                txt = re.sub(r'\s+', ' ', tag.get_text()).strip()
+                if len(txt) > 40:
+                    result["overview"] = txt[:700]
+                    break
+        # 주요 제품 / 매출 비중 테이블
+        for tbl in soup.find_all("table"):
+            ths = [th.get_text(strip=True) for th in tbl.find_all("th")]
+            text_ths = " ".join(ths)
+            if any(k in text_ths for k in ["제품","서비스","품목","사업부문","매출","비중"]):
+                for row in tbl.find_all("tr")[1:]:
+                    tds = [re.sub(r'\s+',' ',td.get_text()).strip() for td in row.find_all("td")]
+                    tds = [t for t in tds if t]
+                    if len(tds) >= 2 and tds[0]:
+                        result["products"].append({
+                            "name":   tds[0],
+                            "ratio":  tds[1] if len(tds) > 1 else "",
+                            "detail": tds[2] if len(tds) > 2 else "",
+                        })
+                if result["products"]: break
+    except Exception as e: logger.warning(f"Naver biz info: {e}")
+    # 사업부문별 실적 (wisereport)
+    try:
+        r2 = await client.get(
+            f"https://navercomp.wisereport.co.kr/v2/company/c1020001.aspx?cmp_cd={code}",
+            headers={**hdrs, "Referer": "https://finance.naver.com/item/coinfo.naver?code="+code},
+            timeout=8.0)
+        soup2 = BeautifulSoup(r2.content, "html.parser")
+        for tbl in soup2.find_all("table"):
+            ths = [th.get_text(strip=True) for th in tbl.find_all("th")]
+            if any(k in " ".join(ths) for k in ["매출","비중","부문"]):
+                for row in tbl.find_all("tr")[1:]:
+                    tds = [re.sub(r'\s+',' ',td.get_text()).strip() for td in row.find_all("td")]
+                    tds = [t for t in tds if t]
+                    if len(tds) >= 2 and tds[0]:
+                        result["segments"].append({"name": tds[0], "ratio": tds[1]})
+                if result["segments"]: break
+    except Exception: pass
+    return result
+
+async def _naver_shareholders_scrape(code: str, client) -> list:
+    """네이버 증권 주요주주 스크래핑 (상장사)"""
+    if not code: return []
+    hdrs = {**HEADERS, "Referer": "https://finance.naver.com/"}
+    try:
+        r = await client.get(
+            f"https://finance.naver.com/item/coinfo.naver?code={code}&target=stock",
+            headers=hdrs, timeout=10.0)
+        soup = BeautifulSoup(r.content, "html.parser")
+        for tbl in soup.find_all("table"):
+            ths = [th.get_text(strip=True) for th in tbl.find_all("th")]
+            if any(k in " ".join(ths) for k in ["주주","주식수","지분","보유"]):
+                rows = []
+                for row in tbl.find_all("tr")[1:]:
+                    tds = [re.sub(r'\s+',' ',td.get_text()).strip() for td in row.find_all("td")]
+                    if len(tds) >= 3 and tds[0]:
+                        rows.append({
+                            "name":     tds[0],
+                            "relation": tds[1] if len(tds) > 1 else "-",
+                            "shares":   tds[2] if len(tds) > 2 else "-",
+                            "ratio":    tds[3].replace("%","") if len(tds) > 3 else "-",
+                        })
+                if rows: return rows[:10]
+    except Exception as e: logger.warning(f"Naver shareholders: {e}")
+    return []
+
 async def _naver_metrics(code: str, client) -> dict:
     if not code: return {}
     result = {}
@@ -817,16 +898,22 @@ async def get_company(q: str = Query(..., min_length=1)):
             _dart_info(corp_code, client),
             _dart_holders(corp_code, cur-1, client),
             _naver_metrics(stock_code, client),
+            _naver_biz_info(stock_code, client),
+            _naver_shareholders_scrape(stock_code, client),
             *[_dart_fs(corp_code, y, "11011", client) for y in annual_years],
             *[_dart_fs(corp_code, y, r,       client) for y,r in q_specs],
             return_exceptions=True,
         )
 
-        corp_info  = results[0] if isinstance(results[0], dict) else {}
-        holders    = results[1] if isinstance(results[1], list) else []
-        stock_data = results[2] if isinstance(results[2], dict) else {}
-        raw_ann = results[3:3+len(annual_years)]
-        raw_qtr = results[3+len(annual_years):]
+        corp_info       = results[0] if isinstance(results[0], dict) else {}
+        dart_holders    = results[1] if isinstance(results[1], list) else []
+        stock_data      = results[2] if isinstance(results[2], dict) else {}
+        biz_info        = results[3] if isinstance(results[3], dict) else {}
+        naver_holders   = results[4] if isinstance(results[4], list) else []
+        # 상장사면 네이버 주주 우선, 없으면 DART fallback
+        holders = naver_holders if naver_holders else dart_holders
+        raw_ann = results[5:5+len(annual_years)]
+        raw_qtr = results[5+len(annual_years):]
 
         # 연간 재무 파싱
         annual_fs = []
@@ -859,6 +946,7 @@ async def get_company(q: str = Query(..., min_length=1)):
             "annual_fs":   annual_fs,
             "quarter_fs":  quarter_fs,
             "shareholders":holders,
+            "biz_info":    biz_info,
         })
 
 @app.get("/api/health")
