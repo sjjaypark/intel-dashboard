@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intelligence Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: {
+          primary:{ DEFAULT:'#2563EB', dark:'#1D4ED8', light:'#DBEAFE' },
+          surface:{ DEFAULT:'#FFFFFF', muted:'#F8FAFC', border:'#E2E8F0' },
+          ink:    { DEFAULT:'#0F172A', muted:'#475569', subtle:'#94A3B8' },
+        },
+        fontFamily:{ sans:['Inter','sans-serif'] },
+      }},
+    };
+  </script>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;background:#F1F5F9;color:#0F172A}
+    .card{transition:transform .15s ease,box-shadow .15s ease}
+    .card:hover{transform:translateY(-2px);box-shadow:0 8px 24px -4px rgba(0,0,0,.10)}
+    .badge-news{background:#EFF6FF;color:#2563EB}
+    .badge-blog{background:#F0FDF4;color:#16A34A}
+    .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .line-clamp-1{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+    .skeleton{animation:pulse 1.6s ease-in-out infinite;background:#E2E8F0;border-radius:6px}
+    @keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .tag-btn{transition:all .13s ease}
+    .tag-btn:hover{transform:translateY(-1px)}
+    #companySidebar{max-height:calc(100vh - 200px);overflow-y:auto}
+    #companySidebar::-webkit-scrollbar{width:4px}
+    #companySidebar::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:2px}
+    ::-webkit-scrollbar{width:5px}
+    ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px}
+    .stock-up{color:#ef4444}
+    .stock-dn{color:#2563EB}
+    .bookmark-btn{transition:color .13s,transform .13s}
+    .bookmark-btn:hover{transform:scale(1.15)}
+    .bookmark-btn.saved{color:#f59e0b}
+    /* 토스트 */
+    #toast{position:fixed;bottom:24px;right:24px;z-index:999;transition:opacity .3s,transform .3s}
+    #toast.hide{opacity:0;transform:translateY(8px);pointer-events:none}
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ══ HEADER ═════════════════════════════════════════════════════════════════ -->
+<header class="bg-white border-b border-surface-border sticky top-0 z-30 shadow-sm">
+  <div class="max-w-[1700px] mx-auto px-5 py-3">
+    <div class="flex items-center gap-4">
+
+      <!-- 로고 -->
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <div class="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+        <div class="leading-none">
+          <div class="text-xs font-extrabold text-ink tracking-tight">INTEL</div>
+          <div class="text-[10px] text-ink-subtle">Dashboard</div>
+        </div>
+      </div>
+
+      <!-- 검색창 -->
+      <div class="flex-1 relative max-w-2xl">
+        <div class="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
+          <svg class="w-4 h-4 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+        </div>
+        <input id="searchInput" type="text"
+          placeholder="산업 키워드 입력 — 유리기판, ESS, 스페이스엑스..."
+          class="w-full pl-10 pr-24 py-2.5 bg-surface-muted border border-surface-border rounded-xl text-sm text-ink placeholder-ink-subtle focus:outline-none focus:border-primary focus:bg-white transition-all duration-200"/>
+        <button id="searchBtn" onclick="runSearch()"
+          class="absolute inset-y-0 right-1.5 my-1 px-4 bg-primary hover:bg-primary-dark text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1">
+          검색
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- 우측 버튼들 -->
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <!-- 북마크 보기 -->
+        <button onclick="toggleBookmarkView()"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-surface-border bg-white hover:bg-amber-50 hover:border-amber-200 text-xs font-medium text-ink-muted transition-all">
+          <svg class="w-3.5 h-3.5 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+          </svg>
+          <span>북마크</span>
+          <span id="bookmarkCount" class="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold hidden">0</span>
+        </button>
+        <!-- CSV 내보내기 -->
+        <button onclick="exportCSV()"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-surface-border bg-white hover:bg-emerald-50 hover:border-emerald-200 text-xs font-medium text-ink-muted transition-all">
+          <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          CSV
+        </button>
+        <!-- URL 공유 -->
+        <button onclick="shareURL()"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-surface-border bg-white hover:bg-primary-light hover:border-primary text-xs font-medium text-ink-muted transition-all">
+          <svg class="w-3.5 h-3.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+          </svg>
+          공유
+        </button>
+        <!-- API 상태 -->
+        <div id="apiStatus" class="hidden">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-surface-muted text-ink-muted border border-surface-border">
+            <span id="apiDot" class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+            <span id="apiLabel">확인 중</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══ MAIN ════════════════════════════════════════════════════════════════════ -->
+<main class="max-w-[1700px] mx-auto px-5 py-4">
+
+  <!-- 퀵 태그 + 히스토리 -->
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <span class="text-[10px] font-bold text-ink-subtle tracking-widest uppercase">Quick</span>
+    <div id="tagContainer" class="flex flex-wrap gap-1.5"></div>
+    <div id="historyContainer" class="flex flex-wrap gap-1.5 ml-2 pl-2 border-l border-surface-border"></div>
+  </div>
+
+  <!-- 상태바 -->
+  <div id="statusBar" class="hidden flex items-center justify-between mb-3 px-1">
+    <div class="flex items-center gap-2">
+      <span class="text-sm font-bold text-ink" id="statusQuery"></span>
+      <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary" id="statusCount"></span>
+    </div>
+    <span class="text-xs text-ink-subtle" id="statusTime"></span>
+  </div>
+
+  <!-- 에러 / 빈 상태 -->
+  <div id="emptyState" class="hidden text-center py-20">
+    <div class="w-12 h-12 bg-surface-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
+      <svg class="w-6 h-6 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+    </div>
+    <p class="text-sm text-ink-muted" id="emptyMsg">검색 결과가 없습니다.</p>
+  </div>
+
+  <!-- ══ 3-column 레이아웃 ══ -->
+  <div id="mainGrid" class="hidden grid gap-4" style="grid-template-columns:1fr 1fr 290px">
+
+    <!-- 뉴스 -->
+    <div>
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-1 h-4 bg-primary rounded-full"></div>
+        <h2 class="text-sm font-bold text-ink flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+          </svg>
+          뉴스
+          <span id="newsCount" class="text-xs font-medium text-ink-subtle bg-white px-2 py-0.5 rounded-full border border-surface-border"></span>
+        </h2>
+      </div>
+      <div id="newsCards" class="flex flex-col gap-2"></div>
+    </div>
+
+    <!-- 블로그 -->
+    <div>
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-1 h-4 bg-emerald-500 rounded-full"></div>
+        <h2 class="text-sm font-bold text-ink flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+          </svg>
+          블로그 리뷰
+          <span id="blogCount" class="text-xs font-medium text-ink-subtle bg-white px-2 py-0.5 rounded-full border border-surface-border"></span>
+        </h2>
+      </div>
+      <div id="blogCards" class="flex flex-col gap-2"></div>
+    </div>
+
+    <!-- 관련 상장사 사이드바 -->
+    <div class="sticky top-[68px] self-start">
+      <div class="bg-white border border-surface-border rounded-xl overflow-hidden shadow-sm">
+        <div class="px-4 py-2.5 border-b border-surface-border bg-surface-muted flex items-center justify-between">
+          <h2 class="text-sm font-bold text-ink flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+            </svg>
+            관련 상장사
+          </h2>
+          <span id="compCount" class="text-xs text-ink-subtle font-medium"></span>
+        </div>
+        <div id="companySidebar" class="divide-y divide-surface-border">
+          <div class="px-4 py-8 text-center text-xs text-ink-subtle">
+            검색하면 관련 상장사가<br/>자동으로 표시됩니다.
+          </div>
+        </div>
+      </div>
+
+      <!-- 추천 기능 카드 -->
+      <div id="suggestCard" class="hidden mt-3 bg-gradient-to-br from-primary to-blue-700 rounded-xl p-4 text-white shadow-md">
+        <div class="text-xs font-bold mb-2 opacity-80 tracking-wide uppercase">Coming Soon</div>
+        <ul class="space-y-1.5 text-xs leading-relaxed opacity-90">
+          <li>🤖 AI 트렌드 요약 (Claude API)</li>
+          <li>🔔 키워드 새 기사 알림</li>
+          <li>👥 팀 공유 대시보드 (DB)</li>
+          <li>📊 종목 멀티차트 비교</li>
+          <li>🌙 다크모드</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 스켈레톤 -->
+  <div id="skeletonGrid" class="hidden grid gap-4" style="grid-template-columns:1fr 1fr 290px">
+    <div class="flex flex-col gap-2">
+      <div class="skeleton h-4 w-16 mb-1 rounded"></div>
+      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-4/5 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-3/4 rounded mt-1"></div></div>
+      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-2/3 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-4/5 rounded mt-1"></div></div>
+      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-3/4 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-1/2 rounded mt-1"></div></div>
+    </div>
+    <div class="flex flex-col gap-2">
+      <div class="skeleton h-4 w-20 mb-1 rounded"></div>
+      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-3/5 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-2/3 rounded mt-1"></div></div>
+      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-4/5 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-3/4 rounded mt-1"></div></div>
+      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-1/2 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-4/5 rounded mt-1"></div></div>
+    </div>
+    <div class="bg-white rounded-xl border border-surface-border h-64 skeleton"></div>
+  </div>
+
+  <!-- 웰컴 -->
+  <div id="welcomeScreen" class="py-14 text-center">
+    <div class="w-14 h-14 bg-primary/8 rounded-3xl flex items-center justify-center mx-auto mb-4">
+      <svg class="w-7 h-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+    </div>
+    <h1 class="text-2xl font-bold text-ink mb-2">산업 인텔리전스 대시보드</h1>
+    <p class="text-ink-muted text-sm max-w-sm mx-auto leading-relaxed mb-6">
+      키워드로 최신 뉴스·블로그 수집 + 관련 상장사 실시간 주가 연동
+    </p>
+    <div class="grid grid-cols-4 gap-3 max-w-xl mx-auto text-left">
+      <div class="bg-white rounded-xl p-3.5 border border-surface-border">
+        <div class="text-lg mb-1">📰</div>
+        <div class="text-xs font-semibold text-ink mb-0.5">뉴스 + 블로그</div>
+        <div class="text-[11px] text-ink-subtle">최대 100건 최신순</div>
+      </div>
+      <div class="bg-white rounded-xl p-3.5 border border-surface-border">
+        <div class="text-lg mb-1">📈</div>
+        <div class="text-xs font-semibold text-ink mb-0.5">실시간 주가</div>
+        <div class="text-[11px] text-ink-subtle">관련주 등락률 표시</div>
+      </div>
+      <div class="bg-white rounded-xl p-3.5 border border-surface-border">
+        <div class="text-lg mb-1">🔖</div>
+        <div class="text-xs font-semibold text-ink mb-0.5">북마크</div>
+        <div class="text-[11px] text-ink-subtle">기사 저장 & 모아보기</div>
+      </div>
+      <div class="bg-white rounded-xl p-3.5 border border-surface-border">
+        <div class="text-lg mb-1">📤</div>
+        <div class="text-xs font-semibold text-ink mb-0.5">내보내기</div>
+        <div class="text-[11px] text-ink-subtle">CSV 다운로드·URL 공유</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- 토스트 알림 -->
+<div id="toast" class="hide">
+  <div class="bg-ink text-white text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
+    <span id="toastMsg"></span>
+  </div>
+</div>
+
+<!-- ══ JAVASCRIPT ═══════════════════════════════════════════════════════════════ -->
+<script>
+const API = 'http://localhost:8000';
+const QUICK_TAGS = [
+  {label:'유리기판',icon:'🔲'},{label:'ESS',icon:'⚡'},{label:'2차전지 양극재',icon:'🔋'},
+  {label:'휴머노이드 액추에이터',icon:'🤖'},{label:'스페이스엑스',icon:'🚀'},
+  {label:'AI 반도체',icon:'💡'},{label:'전고체 배터리',icon:'🧪'},
+  {label:'도심항공모빌리티',icon:'✈️'},{label:'리튬 가공',icon:'⛏️'},
+  {label:'SiC 전력반도체',icon:'📐'},{label:'동박',icon:'🟠'},{label:'수소',icon:'💧'},
+];
+
+const $ = id => document.getElementById(id);
+let currentData = null;
+let bookmarks   = JSON.parse(localStorage.getItem('intel_bookmarks') || '[]');
+let history_    = JSON.parse(localStorage.getItem('intel_history')   || '[]');
+
+// ── 유틸 ─────────────────────────────────────────────────────────────────────
+function esc(s) {
+  const d=document.createElement('div');
+  d.appendChild(document.createTextNode(s||''));
+  return d.innerHTML;
+}
+function toast(msg, duration=2500) {
+  $('toastMsg').textContent = msg;
+  $('toast').classList.remove('hide');
+  setTimeout(()=>$('toast').classList.add('hide'), duration);
+}
+function isBookmarked(link) { return bookmarks.some(b=>b.link===link); }
+function saveBookmarks()    { localStorage.setItem('intel_bookmarks', JSON.stringify(bookmarks)); updateBookmarkCount(); }
+function saveHistory()      { localStorage.setItem('intel_history', JSON.stringify(history_)); }
+function updateBookmarkCount() {
+  const el=$('bookmarkCount');
+  if(bookmarks.length>0){ el.textContent=bookmarks.length; el.classList.remove('hidden'); }
+  else el.classList.add('hidden');
+}
+
+// ── 초기화 ───────────────────────────────────────────────────────────────────
+function init() {
+  renderQuickTags();
+  renderHistory();
+  updateBookmarkCount();
+  checkApiStatus();
+  $('searchInput').addEventListener('keydown', e=>{ if(e.key==='Enter') runSearch(); });
+
+  // URL 해시에서 검색어 복원
+  const hash = decodeURIComponent(location.hash.replace('#q=',''));
+  if (hash) { $('searchInput').value = hash; runSearch(); }
+}
+
+async function checkApiStatus() {
+  try {
+    const d = await fetch(`${API}/api/health`).then(r=>r.json());
+    $('apiStatus').classList.remove('hidden');
+    $('apiDot').className = d.naver_api
+      ? 'w-1.5 h-1.5 rounded-full bg-emerald-500'
+      : 'w-1.5 h-1.5 rounded-full bg-amber-400';
+    $('apiLabel').textContent = d.naver_api ? 'Naver API' : '스크래핑 모드';
+  } catch(_) {}
+}
+
+// ── 퀵 태그 ──────────────────────────────────────────────────────────────────
+function renderQuickTags() {
+  $('tagContainer').innerHTML = QUICK_TAGS.map(t =>
+    `<button class="tag-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
+      border border-surface-border bg-white text-ink-muted hover:bg-primary hover:text-white hover:border-primary
+      transition-all" onclick="searchTag('${esc(t.label)}')">
+      <span>${t.icon}</span><span>${esc(t.label)}</span>
+    </button>`
+  ).join('');
+}
+
+function renderHistory() {
+  if (!history_.length) { $('historyContainer').innerHTML=''; return; }
+  $('historyContainer').innerHTML =
+    `<span class="text-[10px] font-bold text-ink-subtle uppercase tracking-widest self-center">최근</span>` +
+    history_.slice(0,8).map(q =>
+      `<button class="tag-btn inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs
+        bg-surface-muted text-ink-muted border border-surface-border hover:bg-primary/10 hover:text-primary
+        hover:border-primary/30 transition-all" onclick="searchTag('${esc(q)}')">
+        🕐 ${esc(q)}
+      </button>`
+    ).join('');
+}
+
+function searchTag(q) { $('searchInput').value=q; runSearch(); }
+
+// ── 검색 ─────────────────────────────────────────────────────────────────────
+async function runSearch() {
+  const q = $('searchInput').value.trim();
+  if (!q) { $('searchInput').focus(); return; }
+
+  // 히스토리 저장
+  history_ = [q, ...history_.filter(h=>h!==q)].slice(0,10);
+  saveHistory(); renderHistory();
+
+  // URL 해시 업데이트
+  history.replaceState(null,'',`#q=${encodeURIComponent(q)}`);
+
+  showSkeleton();
+  try {
+    const data = await fetch(`${API}/api/search?q=${encodeURIComponent(q)}`).then(r=>{
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
+    currentData = data;
+    renderResults(data);
+  } catch(err) {
+    hideSkeleton();
+    showError(err.message);
+  }
+}
+
+function showSkeleton() {
+  ['welcomeScreen','mainGrid','emptyState'].forEach(id=>$(id).classList.add('hidden'));
+  $('skeletonGrid').classList.remove('hidden');
+  $('statusBar').classList.add('hidden');
+  $('searchBtn').disabled=true;
+}
+function hideSkeleton() {
+  $('skeletonGrid').classList.add('hidden');
+  $('searchBtn').disabled=false;
+}
+
+// ── 결과 렌더링 ───────────────────────────────────────────────────────────────
+function renderResults(data) {
+  hideSkeleton();
+  const {query,news=[],blog=[],companies=[],total,timestamp}=data;
+  if(!total){ $('emptyState').classList.remove('hidden'); return; }
+
+  $('statusBar').classList.remove('hidden');
+  $('statusQuery').textContent = `"${query}"`;
+  $('statusCount').textContent = `뉴스 ${news.length} · 블로그 ${blog.length}`;
+  $('statusTime').textContent  = timestamp ? `${timestamp} 기준` : '';
+
+  $('mainGrid').classList.remove('hidden');
+  $('suggestCard').classList.remove('hidden');
+
+  $('newsCount').textContent = `${news.length}건`;
+  $('blogCount').textContent = `${blog.length}건`;
+  $('newsCards').innerHTML   = news.map((it,i)=>buildCard(it,i)).join('');
+  $('blogCards').innerHTML   = blog.map((it,i)=>buildCard(it,i)).join('');
+
+  renderCompanies(companies, query);
+}
+
+// ── 기사 카드 ─────────────────────────────────────────────────────────────────
+function buildCard(item, index) {
+  const delay  = Math.min(index*22, 700);
+  const isNews = item.type==='news';
+  const badge  = isNews
+    ? `<span class="badge-news px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0">뉴스</span>`
+    : `<span class="badge-blog px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0">블로그</span>`;
+  const src  = item.source ? `<span class="font-semibold text-primary truncate max-w-[100px] flex-shrink-0">${esc(item.source)}</span>` : '';
+  const date = item.pubDate ? `<span class="text-ink-subtle flex-shrink-0 ml-auto">${esc(item.pubDate)}</span>` : '';
+  const sep  = src && date ? `<span class="text-surface-border flex-shrink-0">·</span>` : '';
+  const desc = item.description
+    ? `<p class="line-clamp-2 text-[11px] text-ink-subtle mt-1.5 leading-relaxed">${esc(item.description)}</p>` : '';
+  const saved = isBookmarked(item.link);
+
+  return `
+    <div class="card bg-white border border-surface-border rounded-xl px-4 py-3 relative group"
+         style="animation:up .28s ease-out ${delay}ms both">
+      <!-- 북마크 버튼 -->
+      <button onclick="toggleBookmark(event,'${esc(item.link)}','${esc(item.title)}')"
+        class="bookmark-btn absolute top-3 right-3 ${saved?'saved text-amber-400':'text-surface-border'} hover:text-amber-400"
+        title="북마크">
+        <svg class="w-4 h-4" fill="${saved?'currentColor':'none'}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+        </svg>
+      </button>
+      <a href="${esc(item.link||'#')}" target="_blank" rel="noopener noreferrer" class="block no-underline">
+        <div class="flex items-center gap-1.5 text-[11px] mb-1.5 pr-6">
+          ${badge}${src}${sep}${date}
+        </div>
+        <p class="line-clamp-2 text-[13px] font-semibold text-ink leading-snug group-hover:text-primary transition-colors duration-150 pr-6">
+          ${esc(item.title||'제목 없음')}
+        </p>
+        ${desc}
+      </a>
+    </div>`;
+}
+
+// ── 북마크 ────────────────────────────────────────────────────────────────────
+function toggleBookmark(e, link, title) {
+  e.preventDefault(); e.stopPropagation();
+  if (isBookmarked(link)) {
+    bookmarks = bookmarks.filter(b=>b.link!==link);
+    toast('북마크 해제됨');
+  } else {
+    bookmarks.unshift({link, title, savedAt: new Date().toLocaleDateString('ko-KR')});
+    toast('북마크 저장됨 🔖');
+  }
+  saveBookmarks();
+  // 버튼 상태 업데이트
+  const btn = e.currentTarget;
+  const saved = isBookmarked(link);
+  btn.classList.toggle('saved', saved);
+  btn.classList.toggle('text-amber-400', saved);
+  btn.classList.toggle('text-surface-border', !saved);
+  btn.querySelector('svg').setAttribute('fill', saved ? 'currentColor' : 'none');
+}
+
+function toggleBookmarkView() {
+  if (!bookmarks.length) { toast('저장된 북마크가 없습니다'); return; }
+  const fakeData = {
+    query:'북마크',
+    news: bookmarks.map(b=>({title:b.title,link:b.link,description:`저장일: ${b.savedAt}`,source:'북마크',pubDate:b.savedAt,type:'news'})),
+    blog: [], companies: [], total: bookmarks.length,
+    timestamp: new Date().toLocaleString('ko-KR'),
+  };
+  currentData = fakeData;
+  $('searchInput').value = '북마크';
+  renderResults(fakeData);
+}
+
+// ── 관련 상장사 ───────────────────────────────────────────────────────────────
+let stockCache = {};
+
+async function renderCompanies(companies, query) {
+  $('compCount').textContent = companies.length ? `${companies.length}개` : '';
+  if (!companies.length) {
+    $('companySidebar').innerHTML = `<div class="px-4 py-8 text-center text-xs text-ink-subtle">등록된 테마 종목이 없습니다.</div>`;
+    return;
+  }
+
+  // 일단 주가 없이 먼저 렌더
+  $('companySidebar').innerHTML = companies.map((c,i)=>companyRow(c,i,null)).join('');
+
+  // 주가 비동기 로드
+  const codes = companies.map(c=>c.code).join(',');
+  try {
+    const prices = await fetch(`${API}/api/stocks?codes=${codes}`).then(r=>r.json());
+    stockCache = {...stockCache, ...prices};
+    // 각 종목 행 주가 업데이트
+    companies.forEach(c=>{
+      const el = document.getElementById(`stock-${c.code}`);
+      if (!el) return;
+      const p = prices[c.code];
+      if (p) {
+        const cls = p.up ? 'stock-up' : 'stock-dn';
+        el.innerHTML = `
+          <span class="font-bold text-[12px] ${cls}">${p.price}원</span>
+          <span class="text-[10px] ${cls}">${p.ratio}</span>`;
+      }
+    });
+  } catch(_) {}
+}
+
+function companyRow(c, i, price) {
+  const themeBadge = c.is_theme
+    ? `<span class="text-[9px] bg-amber-50 text-amber-600 px-1 py-0.5 rounded font-semibold">테마</span>` : '';
+  const mentionBadge = c.mentions > 0
+    ? `<span class="text-[9px] bg-blue-50 text-blue-500 px-1 py-0.5 rounded font-medium">${c.mentions}건</span>` : '';
+
+  return `
+    <a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer"
+       class="block px-3.5 py-2.5 hover:bg-amber-50/70 transition-colors no-underline group"
+       style="animation:up .22s ease-out ${i*30}ms both">
+      <div class="flex items-center justify-between gap-1 mb-0.5">
+        <div class="flex items-center gap-1 min-w-0">
+          <span class="text-[12px] font-bold text-ink group-hover:text-amber-700 transition-colors truncate">${esc(c.name)}</span>
+          <span class="text-[10px] font-mono text-ink-subtle bg-surface-muted px-1 rounded flex-shrink-0">${esc(c.code)}</span>
+        </div>
+        <div id="stock-${esc(c.code)}" class="flex items-center gap-0.5 flex-shrink-0 text-ink-subtle">
+          <span class="text-[10px]">로딩중</span>
+        </div>
+      </div>
+      <p class="text-[11px] text-ink-muted leading-snug mb-1">${esc(c.desc)}</p>
+      <div class="flex gap-1">${themeBadge}${mentionBadge}</div>
+    </a>`;
+}
+
+// ── CSV 내보내기 ──────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!currentData) { toast('먼저 검색을 실행하세요'); return; }
+  const all = [...(currentData.news||[]), ...(currentData.blog||[])];
+  if (!all.length) { toast('내보낼 데이터가 없습니다'); return; }
+  const bom = '﻿';
+  const header = ['타입','제목','출처','날짜','링크','요약'];
+  const rows = all.map(it => [
+    it.type==='news'?'뉴스':'블로그',
+    `"${(it.title||'').replace(/"/g,'""')}"`,
+    `"${(it.source||'').replace(/"/g,'""')}"`,
+    it.pubDate||'',
+    it.link||'',
+    `"${(it.description||'').replace(/"/g,'""')}"`,
+  ].join(','));
+  const csv = bom + [header.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `intel_${currentData.query}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast(`CSV 내보내기 완료 (${all.length}건)`);
+}
+
+// ── URL 공유 ─────────────────────────────────────────────────────────────────
+function shareURL() {
+  const url = location.href;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(()=>toast('링크가 복사됐습니다 🔗'));
+  } else {
+    const ta=document.createElement('textarea');
+    ta.value=url; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('링크가 복사됐습니다 🔗');
+  }
+}
+
+// ── 에러 ─────────────────────────────────────────────────────────────────────
+function showError(msg) {
+  $('emptyState').classList.remove('hidden');
+  $('emptyMsg').innerHTML = `
+    <span class="block font-semibold text-red-500 mb-1">서버에 연결할 수 없습니다</span>
+    <span class="text-xs text-ink-subtle">${esc(msg)}</span>
+    <code class="block mt-2 text-xs bg-surface-muted px-3 py-1.5 rounded-lg">uvicorn app:app --port 8000</code>`;
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version)",
+      "PowerShell(python --version)",
+      "PowerShell(python -m pip --version)",
+      "Bash(python -m pip --version)",
+      "Bash(python3 -m pip --version)"
+    ]
+  }
+}
