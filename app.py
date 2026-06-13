@@ -709,11 +709,36 @@ async def _dart_holders(corp_code: str, year: int, client) -> list:
                         "bsns_year":str(y),"reprt_code":"11011"}, timeout=8.0)
             d = r.json()
             if d.get("status") != "000" or not d.get("list"): continue
-            return [{"name":    s.get("nm",""),
-                     "relation":s.get("relate",""),
-                     "shares":  s.get("trmend_posesn_stock_co",""),
-                     "ratio":   s.get("trmend_posesn_stock_qota_rt","")}
-                    for s in d["list"]]
+            # 보통주·우선주 별도 행 → 이름별 합산, "계" 행 제외
+            merged: dict[str, dict] = {}
+            for s in d["list"]:
+                nm = re.sub(r'\s+', ' ', s.get("nm","")).strip()
+                if not nm or nm in ("계",): continue
+                shares_str = s.get("trmend_posesn_stock_co","").replace(",","")
+                ratio_str  = s.get("trmend_posesn_stock_qota_rt","").replace(",","")
+                try:    shares = int(shares_str)
+                except: shares = 0
+                try:    ratio  = float(ratio_str)
+                except: ratio  = 0.0
+                if nm in merged:
+                    merged[nm]["shares"] += shares
+                    merged[nm]["ratio"]  += ratio
+                else:
+                    merged[nm] = {
+                        "name":     nm,
+                        "relation": s.get("relate",""),
+                        "shares":   shares,
+                        "ratio":    ratio,
+                    }
+            result = []
+            for h in merged.values():
+                result.append({
+                    "name":     h["name"],
+                    "relation": h["relation"],
+                    "shares":   f"{h['shares']:,}" if h["shares"] else "-",
+                    "ratio":    f"{h['ratio']:.2f}",
+                })
+            return result
         except Exception as e: logger.warning(f"DART holders {y}: {e}")
     return []
 
