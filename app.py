@@ -713,59 +713,54 @@ async def _dart_holders(corp_code: str, year: int, client) -> list:
                 for s in d.get("list",[])]
     except Exception as e: logger.warning(f"DART holders: {e}"); return []
 
-async def _naver_biz_info(code: str, client) -> dict:
-    """네이버 증권 기업개요·주요제품 스크래핑 (상장사)"""
-    result = {"overview": "", "products": [], "segments": []}
+async def _naver_coinfo(code: str, client) -> dict:
+    """네이버 증권 coinfo 페이지 한 번에 스크래핑 (기업개요·시총·주식수·외국인비율)"""
+    result = {"overview": "", "products": [], "segments": [],
+              "market_cap": "", "issued_shares": "", "foreign_ratio": ""}
     if not code: return result
     hdrs = {**HEADERS, "Referer": "https://finance.naver.com/"}
     try:
         r = await client.get(
             f"https://finance.naver.com/item/coinfo.naver?code={code}&target=company",
-            headers=hdrs, timeout=10.0)
-        soup = BeautifulSoup(r.content, "html.parser")
-        # 기업개요 텍스트
-        for sel in ["p.summary_info", "div.summary_info", "td.coinfo_body p",
-                    "table.tb_type1.tb_co td p", "div.coinfo_top p",
-                    "div#content p", "td p"]:
-            tag = soup.select_one(sel)
-            if tag:
-                txt = re.sub(r'\s+', ' ', tag.get_text()).strip()
-                if len(txt) > 40:
-                    result["overview"] = txt[:700]
-                    break
-        # 주요 제품 / 매출 비중 테이블
-        for tbl in soup.find_all("table"):
-            ths = [th.get_text(strip=True) for th in tbl.find_all("th")]
-            text_ths = " ".join(ths)
-            if any(k in text_ths for k in ["제품","서비스","품목","사업부문","매출","비중"]):
-                for row in tbl.find_all("tr")[1:]:
-                    tds = [re.sub(r'\s+',' ',td.get_text()).strip() for td in row.find_all("td")]
-                    tds = [t for t in tds if t]
-                    if len(tds) >= 2 and tds[0]:
-                        result["products"].append({
-                            "name":   tds[0],
-                            "ratio":  tds[1] if len(tds) > 1 else "",
-                            "detail": tds[2] if len(tds) > 2 else "",
-                        })
-                if result["products"]: break
-    except Exception as e: logger.warning(f"Naver biz info: {e}")
-    # 사업부문별 실적 (wisereport)
-    try:
-        r2 = await client.get(
-            f"https://navercomp.wisereport.co.kr/v2/company/c1020001.aspx?cmp_cd={code}",
-            headers={**hdrs, "Referer": "https://finance.naver.com/item/coinfo.naver?code="+code},
-            timeout=8.0)
-        soup2 = BeautifulSoup(r2.content, "html.parser")
-        for tbl in soup2.find_all("table"):
-            ths = [th.get_text(strip=True) for th in tbl.find_all("th")]
-            if any(k in " ".join(ths) for k in ["매출","비중","부문"]):
-                for row in tbl.find_all("tr")[1:]:
-                    tds = [re.sub(r'\s+',' ',td.get_text()).strip() for td in row.find_all("td")]
-                    tds = [t for t in tds if t]
-                    if len(tds) >= 2 and tds[0]:
-                        result["segments"].append({"name": tds[0], "ratio": tds[1]})
-                if result["segments"]: break
-    except Exception: pass
+            headers=hdrs, timeout=12.0)
+        soup = BeautifulSoup(r.content, "html.parser", from_encoding="euc-kr")
+
+        # ── 기업개요 ──────────────────────────────────────────────────
+        summary_div = soup.find("div", id="summary_info") or soup.select_one("div.summary_info")
+        if summary_div:
+            paras = [re.sub(r'\s+', ' ', p.get_text()).strip()
+                     for p in summary_div.find_all("p") if p.get_text(strip=True)]
+            overview = " ".join(paras)
+            overview = re.sub(r'출처\s*:\s*\S+.*$', '', overview).strip()
+            result["overview"] = overview[:700]
+
+        # ── 시가총액·상장주식수·외국인비율 ────────────────────────────
+        # th.find_next_sibling('td') 로 정확하게 매핑
+        for th in soup.find_all("th"):
+            key = th.get_text(strip=True)
+            td  = th.find_next_sibling("td")
+            if not td: continue
+            val = re.sub(r'\s+', ' ', td.get_text()).strip()
+
+            if key == "시가총액":
+                # "1,885조 4,249억원" 형태로 정리
+                result["market_cap"] = re.sub(r'\s+', '', val).replace("원", "원")
+
+            elif key == "상장주식수":
+                shares_clean = val.replace(",", "")
+                if shares_clean.isdigit():
+                    n = int(shares_clean)
+                    if n >= 100_000_000:
+                        result["issued_shares"] = f"{n/100_000_000:.2f}억주"
+                    elif n >= 10_000:
+                        result["issued_shares"] = f"{n/10_000:.0f}만주"
+                    else:
+                        result["issued_shares"] = f"{n:,}주"
+
+            elif "외국인소진율" in key or "외국인지분율" in key:
+                result["foreign_ratio"] = val  # 이미 "47.58%" 형태
+
+    except Exception as e: logger.warning(f"Naver coinfo: {e}")
     return result
 
 async def _naver_shareholders_scrape(code: str, client) -> list:
@@ -776,7 +771,7 @@ async def _naver_shareholders_scrape(code: str, client) -> list:
         r = await client.get(
             f"https://finance.naver.com/item/coinfo.naver?code={code}&target=stock",
             headers=hdrs, timeout=10.0)
-        soup = BeautifulSoup(r.content, "html.parser")
+        soup = BeautifulSoup(r.content, "html.parser", from_encoding="euc-kr")
         for tbl in soup.find_all("table"):
             ths = [th.get_text(strip=True) for th in tbl.find_all("th")]
             if any(k in " ".join(ths) for k in ["주주","주식수","지분","보유"]):
@@ -794,58 +789,16 @@ async def _naver_shareholders_scrape(code: str, client) -> list:
     except Exception as e: logger.warning(f"Naver shareholders: {e}")
     return []
 
+# _naver_biz_info / _naver_stock_detail → _naver_coinfo 로 통합
+async def _naver_biz_info(code: str, client) -> dict:
+    d = await _naver_coinfo(code, client)
+    return {"overview": d["overview"], "products": d["products"], "segments": d["segments"]}
+
 async def _naver_stock_detail(code: str, client) -> dict:
-    """네이버 증권 메인 페이지 스크래핑 — 시가총액/상장주식수/외국인비율/상장일"""
-    result = {}
-    if not code: return result
-    hdrs = {**HEADERS, "Referer": "https://finance.naver.com/"}
-    try:
-        r = await client.get(f"https://finance.naver.com/item/main.naver?code={code}",
-            headers=hdrs, timeout=10.0)
-        soup = BeautifulSoup(r.content, "html.parser")
-
-        # 시가총액·상장주식수 — table.no_info 안의 th/td 쌍
-        for tbl in soup.select("table.no_info, table.tb_type1_ifrs, table"):
-            rows = tbl.find_all("tr")
-            for row in rows:
-                th = row.find("th")
-                td = row.find("td")
-                if not th or not td: continue
-                key = th.get_text(strip=True)
-                val = re.sub(r'\s+', ' ', td.get_text()).strip()
-                if "시가총액" in key:
-                    result["market_cap"] = val
-                elif "상장주식수" in key or "발행주식수" in key:
-                    result["issued_shares"] = val
-                elif "외국인" in key and ("비율" in key or "보유" in key):
-                    result["foreign_ratio"] = val.replace("%","").strip() + "%"
-                elif "상장일" in key:
-                    result["listing_dt"] = val
-
-        # 외국인 비율 — 별도 span/div (fallback)
-        if not result.get("foreign_ratio"):
-            for tag in soup.select("em#_foreign_hold_ratio, span.blind"):
-                txt = tag.get_text(strip=True)
-                if "%" in txt and len(txt) < 15:
-                    result["foreign_ratio"] = txt if "%" in txt else txt+"%"
-                    break
-
-        # 상장일 fallback — coinfo 페이지
-        if not result.get("listing_dt"):
-            try:
-                rc = await client.get(
-                    f"https://finance.naver.com/item/coinfo.naver?code={code}",
-                    headers=hdrs, timeout=8.0)
-                sc = BeautifulSoup(rc.content, "html.parser")
-                for row in sc.find_all("tr"):
-                    th = row.find("th")
-                    td = row.find("td")
-                    if th and td and "상장일" in th.get_text():
-                        result["listing_dt"] = td.get_text(strip=True)
-                        break
-            except Exception: pass
-    except Exception as e: logger.warning(f"Naver stock detail: {e}")
-    return result
+    d = await _naver_coinfo(code, client)
+    return {"market_cap": d["market_cap"],
+            "issued_shares": d["issued_shares"],
+            "foreign_ratio": d["foreign_ratio"]}
 
 async def _naver_metrics(code: str, client) -> dict:
     if not code: return {}
@@ -950,9 +903,8 @@ async def get_company(q: str = Query(..., min_length=1)):
             _dart_info(corp_code, client),
             _dart_holders(corp_code, cur-1, client),
             _naver_metrics(stock_code, client),
-            _naver_biz_info(stock_code, client),
+            _naver_coinfo(stock_code, client),          # 기업개요+시총+주식수+외국인
             _naver_shareholders_scrape(stock_code, client),
-            _naver_stock_detail(stock_code, client),
             *[_dart_fs(corp_code, y, "11011", client) for y in annual_years],
             *[_dart_fs(corp_code, y, r,       client) for y,r in q_specs],
             return_exceptions=True,
@@ -961,19 +913,20 @@ async def get_company(q: str = Query(..., min_length=1)):
         corp_info       = results[0] if isinstance(results[0], dict) else {}
         dart_holders    = results[1] if isinstance(results[1], list) else []
         stock_data      = results[2] if isinstance(results[2], dict) else {}
-        biz_info        = results[3] if isinstance(results[3], dict) else {}
+        naver_ci        = results[3] if isinstance(results[3], dict) else {}
         naver_holders   = results[4] if isinstance(results[4], list) else []
-        naver_detail    = results[5] if isinstance(results[5], dict) else {}
         # 상장사면 네이버 주주 우선, 없으면 DART fallback
         holders = naver_holders if naver_holders else dart_holders
-        # 네이버 상세에서 시가총액/주식수/외국인/상장일 보완
-        stock_data["market_cap"]    = naver_detail.get("market_cap","")    or stock_data.get("market_cap","")
-        stock_data["issued_shares"] = naver_detail.get("issued_shares","") or stock_data.get("issued_shares","")
-        stock_data["foreign_ratio"] = naver_detail.get("foreign_ratio","") or stock_data.get("foreign_ratio","")
-        if not corp_info.get("listing_dt") or corp_info.get("listing_dt") == "-":
-            corp_info["listing_dt"] = naver_detail.get("listing_dt","") or "-"
-        raw_ann = results[6:6+len(annual_years)]
-        raw_qtr = results[6+len(annual_years):]
+        # 네이버 코인포에서 시가총액·주식수·외국인비율 보완
+        stock_data["market_cap"]    = naver_ci.get("market_cap","")
+        stock_data["issued_shares"] = naver_ci.get("issued_shares","")
+        stock_data["foreign_ratio"] = naver_ci.get("foreign_ratio","")
+        # 사업정보
+        biz_info = {"overview": naver_ci.get("overview",""),
+                    "products": naver_ci.get("products",[]),
+                    "segments": naver_ci.get("segments",[])}
+        raw_ann = results[5:5+len(annual_years)]
+        raw_qtr = results[5+len(annual_years):]
 
         # 연간 재무 파싱
         annual_fs = []
