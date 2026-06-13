@@ -282,7 +282,7 @@
 
 <!-- ══ JAVASCRIPT ═══════════════════════════════════════════════════════════════ -->
 <script>
-const API = 'http://localhost:8000';
+const API = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 const QUICK_TAGS = [
   {label:'유리기판',icon:'🔲'},{label:'ESS',icon:'⚡'},{label:'2차전지 양극재',icon:'🔋'},
   {label:'휴머노이드 액추에이터',icon:'🤖'},{label:'스페이스엑스',icon:'🚀'},
