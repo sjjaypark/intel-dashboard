@@ -431,14 +431,17 @@ function renderCompanyOverview(d) {
 
   // 기본정보 그리드
   const infoItems = [
-    ['대표이사',   ci.ceo_nm   || '-'],
-    ['설립일',     ci.est_dt   || '-'],
-    ['상장일',     ci.listing_dt|| '-'],
-    ['상장시장',   ci.corp_cls || '-'],
-    ['결산월',     ci.acc_mt ? `${ci.acc_mt}월` : '-'],
-    ['소재지',     ci.adres    || '-'],
-    ['홈페이지',   ci.hm_url   ? `<a href="${esc(ci.hm_url)}" target="_blank" class="text-primary hover:underline truncate">${esc(ci.hm_url)}</a>` : '-'],
-    ['전화',       ci.phn_no   || '-'],
+    ['대표이사',     ci.ceo_nm    || '-'],
+    ['설립일',       ci.est_dt    || '-'],
+    ['상장일',       ci.listing_dt|| '-'],
+    ['상장시장',     ci.corp_cls  || '-'],
+    ['시가총액',     sd.market_cap|| '-'],
+    ['발행주식수',   sd.issued_shares || '-'],
+    ['외국인 비율',  sd.foreign_ratio || '-'],
+    ['결산월',       ci.acc_mt ? `${ci.acc_mt}월` : '-'],
+    ['소재지',       ci.adres    || '-'],
+    ['홈페이지',     ci.hm_url   ? `<a href="${esc(ci.hm_url)}" target="_blank" class="text-primary hover:underline truncate">${esc(ci.hm_url)}</a>` : '-'],
+    ['전화',         ci.phn_no   || '-'],
   ];
 
   const infoGrid = infoItems.map(([k,v])=>`

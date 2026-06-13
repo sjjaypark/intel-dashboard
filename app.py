@@ -805,13 +805,24 @@ async def _naver_metrics(code: str, client) -> dict:
         diff  = d.get("compareToPreviousClosePrice","")
         ratio = d.get("fluctuationsRatio","")
         sign  = "+" if diff and not diff.startswith("-") else ""
+        # 발행주식수 포맷 (주)
+        issued_raw = d.get("issuedShares","") or d.get("issueAmount","") or ""
+        issued_clean = issued_raw.replace(",","")
+        issued_fmt = ""
+        if issued_clean.isdigit():
+            n = int(issued_clean)
+            if n >= 100_000_000: issued_fmt = f"{n/100_000_000:.2f}억주"
+            elif n >= 10_000:    issued_fmt = f"{n/10_000:.0f}만주"
+            else:                issued_fmt = f"{n:,}주"
         result.update({
-            "price":      f"{int(price):,}원" if price.lstrip("-").isdigit() else "-",
-            "diff":       f"{sign}{diff}원" if diff else "-",
-            "ratio":      f"{sign}{ratio}%" if ratio else "-",
-            "up":         not (diff or "").startswith("-"),
-            "market_cap": d.get("marketValue",""),
-            "market":     d.get("marketType",""),
+            "price":         f"{int(price):,}원" if price.lstrip("-").isdigit() else "-",
+            "diff":          f"{sign}{diff}원" if diff else "-",
+            "ratio":         f"{sign}{ratio}%" if ratio else "-",
+            "up":            not (diff or "").startswith("-"),
+            "market_cap":    d.get("marketValue",""),
+            "market":        d.get("marketType",""),
+            "issued_shares": issued_fmt,
+            "foreign_ratio": d.get("foreignRatio","") or d.get("foreignOwnershipRatio",""),
         })
     except Exception as e: logger.warning(f"Naver basic: {e}")
     try:
@@ -823,6 +834,20 @@ async def _naver_metrics(code: str, client) -> dict:
             if k in {"PER","PBR","EPS","BPS","ROE","ROA","DIV","DPS"}:
                 result[k] = f"{info.get('value','-')}{info.get('unit','')}"
     except Exception as e: logger.warning(f"Naver invest: {e}")
+    # 외국인 보유 비율 (별도 endpoint fallback)
+    if not result.get("foreign_ratio"):
+        try:
+            r3 = await client.get(f"https://m.stock.naver.com/api/stock/{code}/investor",
+                headers=HEADERS, timeout=5.0)
+            d3 = r3.json()
+            # 외국인 비율 필드 탐색
+            fr = (d3.get("foreignRatio") or d3.get("foreignOwnershipRatio")
+                  or d3.get("foreigner_hold_ratio") or "")
+            if fr: result["foreign_ratio"] = str(fr)
+        except Exception: pass
+    if result.get("foreign_ratio"):
+        fr = str(result["foreign_ratio"]).replace("%","")
+        result["foreign_ratio"] = f"{fr}%"
     return result
 
 # ══════════════════════════════════════════════════════════════════════════════
