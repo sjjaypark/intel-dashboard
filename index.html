@@ -144,6 +144,9 @@
     <span class="text-xs text-ink-subtle" id="statusTime"></span>
   </div>
 
+  <!-- ══ 회사 개요 패널 ══ -->
+  <div id="companyPanel" class="hidden mb-4"></div>
+
   <!-- 에러 / 빈 상태 -->
   <div id="emptyState" class="hidden text-center py-20">
     <div class="w-12 h-12 bg-surface-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
@@ -371,25 +374,261 @@ async function runSearch() {
   const q = $('searchInput').value.trim();
   if (!q) { $('searchInput').focus(); return; }
 
-  // 히스토리 저장
   history_ = [q, ...history_.filter(h=>h!==q)].slice(0,10);
   saveHistory(); renderHistory();
-
-  // URL 해시 업데이트
   history.replaceState(null,'',`#q=${encodeURIComponent(q)}`);
 
   showSkeleton();
+  $('companyPanel').classList.add('hidden');
+  $('companyPanel').innerHTML = '';
+
+  // 뉴스/블로그 + 회사개요 병렬 조회
+  const searchP  = fetch(`${API}/api/search?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():Promise.reject(r.status));
+  const companyP = fetch(`${API}/api/company?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():null).catch(()=>null);
+
   try {
-    const data = await fetch(`${API}/api/search?q=${encodeURIComponent(q)}`).then(r=>{
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    });
+    const data = await searchP;
     currentData = data;
     renderResults(data);
   } catch(err) {
     hideSkeleton();
     showError(err.message);
   }
+
+  // 회사 개요는 별도로 로드 (뉴스보다 느려도 됨)
+  companyP.then(cData => {
+    if (cData && (cData.corp_info?.corp_name || cData.stock_data?.price)) {
+      renderCompanyOverview(cData);
+    }
+  }).catch(()=>{});
+}
+
+// ── 회사 개요 ─────────────────────────────────────────────────────────────────
+const FS_LABEL = {
+  revenue:'매출액', cogs:'매출원가', gross_profit:'매출총이익', sga:'판관비',
+  operating_profit:'영업이익', ebitda:'EBITDA', pretax_profit:'세전이익',
+  tax:'법인세', net_profit:'순이익',
+  total_assets:'총자산', current_assets:'유동자산', non_current_assets:'비유동자산',
+  tangible_assets:'유형자산', intangible_assets:'무형자산',
+  total_liabilities:'총부채', current_liabilities:'유동부채',
+  non_current_liabilities:'비유동부채', equity:'자본총계',
+};
+const IS_KEYS = ['revenue','cogs','gross_profit','sga','operating_profit','ebitda','pretax_profit','tax','net_profit'];
+const BS_KEYS = ['total_assets','current_assets','non_current_assets','tangible_assets','intangible_assets','total_liabilities','current_liabilities','non_current_liabilities','equity'];
+const INVEST_KEYS = ['PER','PBR','EPS','BPS','ROE','ROA','DIV'];
+
+function renderCompanyOverview(d) {
+  const ci = d.corp_info || {};
+  const sd = d.stock_data || {};
+  const af = d.annual_fs  || [];
+  const qf = d.quarter_fs || [];
+  const sh = d.shareholders || [];
+  const hasDart = d.has_dart;
+
+  const priceColor = sd.up ? 'text-red-500' : 'text-blue-600';
+  const arrow      = sd.up ? '▲' : '▼';
+
+  // 기본정보 그리드
+  const infoItems = [
+    ['대표이사',   ci.ceo_nm   || '-'],
+    ['설립일',     ci.est_dt   || '-'],
+    ['상장일',     ci.listing_dt|| '-'],
+    ['상장시장',   ci.corp_cls || '-'],
+    ['결산월',     ci.acc_mt ? `${ci.acc_mt}월` : '-'],
+    ['소재지',     ci.adres    || '-'],
+    ['홈페이지',   ci.hm_url   ? `<a href="${esc(ci.hm_url)}" target="_blank" class="text-primary hover:underline truncate">${esc(ci.hm_url)}</a>` : '-'],
+    ['전화',       ci.phn_no   || '-'],
+  ];
+
+  const infoGrid = infoItems.map(([k,v])=>`
+    <div class="flex flex-col gap-0.5">
+      <span class="text-[10px] font-bold text-ink-subtle uppercase tracking-wide">${k}</span>
+      <span class="text-xs text-ink truncate">${v}</span>
+    </div>`).join('');
+
+  // 재무 테이블 생성 함수
+  function fsTable(rows, keys, section) {
+    if (!rows.length) return `<div class="px-4 py-6 text-center text-xs text-ink-subtle">DART 데이터 없음 (API 키 미설정 또는 비상장사)</div>`;
+    const periods = rows.map(r=>r.period);
+    const isIS = section === 'IS';
+    const displayKeys = isIS ? IS_KEYS : BS_KEYS;
+    const separators = isIS ? ['net_profit'] : ['equity'];
+    return `
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs border-collapse">
+          <thead>
+            <tr class="bg-surface-muted">
+              <th class="text-left px-3 py-2 font-semibold text-ink-muted sticky left-0 bg-surface-muted min-w-[90px]">항목 <span class="font-normal text-[10px]">(억원)</span></th>
+              ${periods.map(p=>`<th class="text-right px-3 py-2 font-semibold text-ink-muted whitespace-nowrap">${p}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${displayKeys.map((key,i)=>{
+              const sep = i===0 || (isIS && ['gross_profit','operating_profit','ebitda'].includes(key)) || (!isIS && ['current_assets','non_current_assets','current_liabilities','non_current_liabilities'].includes(key));
+              const bold = ['revenue','operating_profit','ebitda','net_profit','total_assets','total_liabilities','equity'].includes(key);
+              const highlight = ['operating_profit','net_profit','equity'].includes(key) ? 'bg-blue-50/50' : '';
+              return `<tr class="border-t border-surface-border hover:bg-surface-muted/50 ${highlight}">
+                <td class="px-3 py-1.5 sticky left-0 bg-white ${bold?'font-semibold text-ink':'text-ink-muted'} whitespace-nowrap">
+                  ${bold?'':'<span class="mr-1 text-ink-subtle opacity-50">ㄴ</span>'}${FS_LABEL[key]||key}
+                </td>
+                ${rows.map(row=>{
+                  const val = row[key] || '-';
+                  const isNeg = typeof val === 'string' && val.startsWith('-') && val !== '-';
+                  return `<td class="text-right px-3 py-1.5 font-mono ${bold?'font-semibold':''}  ${isNeg?'text-red-500':'text-ink'} whitespace-nowrap">${val}</td>`;
+                }).join('')}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  // 투자지표 행
+  const investRow = INVEST_KEYS.filter(k=>sd[k]).map(k=>`
+    <div class="flex flex-col items-center px-3 py-2 bg-surface-muted rounded-lg min-w-[70px]">
+      <span class="text-[10px] font-bold text-ink-subtle mb-0.5">${k}</span>
+      <span class="text-sm font-bold text-ink">${esc(sd[k]||'-')}</span>
+    </div>`).join('');
+
+  // 주주현황 테이블
+  const holdersHtml = sh.length ? `
+    <table class="w-full text-xs">
+      <thead><tr class="bg-surface-muted">
+        <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">주주명</th>
+        <th class="text-left px-3 py-1.5 font-semibold text-ink-muted">관계</th>
+        <th class="text-right px-3 py-1.5 font-semibold text-ink-muted">주식수</th>
+        <th class="text-right px-3 py-1.5 font-semibold text-ink-muted">지분율</th>
+      </tr></thead>
+      <tbody>${sh.map(s=>`
+        <tr class="border-t border-surface-border hover:bg-surface-muted/40">
+          <td class="px-3 py-1.5 font-medium text-ink">${esc(s.name)}</td>
+          <td class="px-3 py-1.5 text-ink-muted">${esc(s.relation)}</td>
+          <td class="px-3 py-1.5 text-right font-mono text-ink">${esc(s.shares)}</td>
+          <td class="px-3 py-1.5 text-right font-semibold text-primary">${esc(s.ratio)}%</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : `<div class="px-4 py-4 text-center text-xs text-ink-subtle">주주 데이터 없음</div>`;
+
+  const panel = document.getElementById('companyPanel');
+  panel.innerHTML = `
+    <div class="bg-white border border-surface-border rounded-2xl shadow-sm overflow-hidden">
+      <!-- 헤더 -->
+      <div class="px-5 py-4 bg-gradient-to-r from-slate-800 to-slate-700 text-white">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <h2 class="text-lg font-bold">${esc(ci.corp_name || d.query)}</h2>
+              ${ci.corp_name_eng ? `<span class="text-xs text-white/60">${esc(ci.corp_name_eng)}</span>` : ''}
+              ${d.stock_code ? `<span class="text-xs bg-white/10 px-2 py-0.5 rounded font-mono">${esc(d.stock_code)}</span>` : ''}
+              ${!hasDart ? `<span class="text-[10px] bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded border border-amber-400/30">DART 미연동</span>` : ''}
+            </div>
+            ${d.desc ? `<p class="text-xs text-white/70 leading-relaxed max-w-2xl">${esc(d.desc)}</p>` : ''}
+          </div>
+          ${sd.price ? `
+          <div class="text-right flex-shrink-0">
+            <div class="text-2xl font-bold ${sd.up?'text-red-300':'text-blue-300'}">${esc(sd.price)}</div>
+            <div class="text-xs ${sd.up?'text-red-300':'text-blue-300'}">${arrow} ${esc(sd.diff)} (${esc(sd.ratio)})</div>
+            ${sd.market_cap ? `<div class="text-xs text-white/50 mt-0.5">시총 ${esc(sd.market_cap)}</div>` : ''}
+            ${sd.market     ? `<div class="text-[10px] text-white/40">${esc(sd.market)}</div>` : ''}
+          </div>` : ''}
+        </div>
+      </div>
+
+      <!-- 기본정보 -->
+      <div class="px-5 py-3 border-b border-surface-border grid grid-cols-4 gap-3 bg-surface-muted/30">
+        ${infoGrid}
+      </div>
+
+      <!-- 투자지표 -->
+      ${investRow ? `
+      <div class="px-5 py-3 border-b border-surface-border">
+        <div class="text-[10px] font-bold text-ink-subtle uppercase tracking-widest mb-2">투자지표</div>
+        <div class="flex gap-2 flex-wrap">${investRow}</div>
+      </div>` : ''}
+
+      <!-- 재무/손익 탭 -->
+      <div class="border-b border-surface-border">
+        <div class="flex items-center gap-0 px-5 pt-3">
+          <div class="flex gap-1 mr-4">
+            <button id="tabAnnual" onclick="switchFsTab('annual')"
+              class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white">연간</button>
+            <button id="tabQuarter" onclick="switchFsTab('quarter')"
+              class="px-3 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:bg-surface-muted">분기</button>
+          </div>
+          <div class="flex gap-1">
+            <button id="tabIS" onclick="switchSection('IS')"
+              class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 text-ink">손익계산서</button>
+            <button id="tabBS" onclick="switchSection('BS')"
+              class="px-3 py-1.5 text-xs font-medium rounded-lg text-ink-muted hover:bg-surface-muted">재무상태표</button>
+          </div>
+          ${!hasDart ? `<span class="ml-auto text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+            💡 DART API 키 설정 시 실제 재무데이터 표시
+          </span>` : ''}
+        </div>
+        <div id="fsTableArea" class="mt-2 pb-1"></div>
+      </div>
+
+      <!-- 주주현황 -->
+      <div>
+        <div class="px-5 py-2 border-b border-surface-border">
+          <span class="text-[10px] font-bold text-ink-subtle uppercase tracking-widest">최대주주 현황</span>
+        </div>
+        ${holdersHtml}
+      </div>
+    </div>`;
+
+  // 재무 테이블 상태
+  window._fsData = { annual: af, quarter: qf, tab: 'annual', section: 'IS' };
+  renderFsTable();
+  panel.classList.remove('hidden');
+}
+
+function switchFsTab(tab) {
+  window._fsData.tab = tab;
+  $('tabAnnual').className  = tab==='annual'  ? 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white'        : 'px-3 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:bg-surface-muted';
+  $('tabQuarter').className = tab==='quarter' ? 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white'        : 'px-3 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:bg-surface-muted';
+  renderFsTable();
+}
+function switchSection(sec) {
+  window._fsData.section = sec;
+  $('tabIS').className = sec==='IS' ? 'px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 text-ink' : 'px-3 py-1.5 text-xs font-medium rounded-lg text-ink-muted hover:bg-surface-muted';
+  $('tabBS').className = sec==='BS' ? 'px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 text-ink' : 'px-3 py-1.5 text-xs font-medium rounded-lg text-ink-muted hover:bg-surface-muted';
+  renderFsTable();
+}
+function renderFsTable() {
+  const { tab, section, annual, quarter } = window._fsData;
+  const rows = tab==='annual' ? annual : quarter;
+  const el = $('fsTableArea');
+  if (!el) return;
+  const displayKeys = section==='IS' ? IS_KEYS : BS_KEYS;
+  if (!rows || !rows.length) {
+    el.innerHTML = `<div class="px-5 py-6 text-center text-xs text-ink-subtle">데이터 없음 — DART 사업보고서 미제출 또는 API 키 미설정</div>`;
+    return;
+  }
+  const periods = rows.map(r=>r.period);
+  const bold = new Set(['revenue','operating_profit','ebitda','net_profit','total_assets','total_liabilities','equity']);
+  const hl   = new Set(['operating_profit','net_profit','equity']);
+  el.innerHTML = `<div class="overflow-x-auto">
+    <table class="w-full text-xs border-collapse">
+      <thead><tr class="bg-surface-muted/60">
+        <th class="text-left px-4 py-2 font-semibold text-ink-subtle sticky left-0 bg-surface-muted/60 min-w-[100px]">항목 <span class="font-normal text-[10px] text-ink-subtle">(억원)</span></th>
+        ${periods.map(p=>`<th class="text-right px-4 py-2 font-semibold text-ink-subtle whitespace-nowrap">${p}</th>`).join('')}
+      </tr></thead>
+      <tbody>${displayKeys.map(key=>{
+        const isBold = bold.has(key);
+        const isHl   = hl.has(key);
+        const indent = !isBold ? '<span class="mr-1 opacity-30 text-[10px]">└</span>' : '';
+        return `<tr class="border-t border-surface-border hover:bg-blue-50/20 ${isHl?'bg-blue-50/30':''}">
+          <td class="px-4 py-1.5 sticky left-0 bg-white ${isHl?'bg-blue-50/30':''} ${isBold?'font-semibold text-ink':'text-ink-muted'} whitespace-nowrap">${indent}${FS_LABEL[key]||key}</td>
+          ${rows.map(row=>{
+            const val = row[key] ?? '-';
+            const neg = typeof val==='string' && val!=='-' && val.startsWith('-');
+            return `<td class="text-right px-4 py-1.5 font-mono ${isBold?'font-semibold':''} ${neg?'text-red-500':'text-ink'} whitespace-nowrap">${val}</td>`;
+          }).join('')}
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
 }
 
 function showSkeleton() {

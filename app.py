@@ -514,6 +514,160 @@ async def pipeline_blog(query: str) -> list:
     return dedup(relevant, limit=50)
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  DART 전자공시 API
+# ══════════════════════════════════════════════════════════════════════════════
+DART_API_KEY = os.getenv("DART_API_KEY", "")
+
+ACCT_MAP: dict[str, list[str]] = {
+    "revenue":                ["매출액","영업수익","수익(매출액)","매출"],
+    "cogs":                   ["매출원가","영업비용"],
+    "gross_profit":           ["매출총이익","매출총손익"],
+    "sga":                    ["판매비와관리비","판매비및일반관리비"],
+    "operating_profit":       ["영업이익","영업손익"],
+    "pretax_profit":          ["법인세비용차감전순이익","법인세차감전순이익","법인세비용차감전계속사업이익"],
+    "tax":                    ["법인세비용"],
+    "net_profit":             ["당기순이익","당기순손익"],
+    "total_assets":           ["자산총계"],
+    "current_assets":         ["유동자산"],
+    "non_current_assets":     ["비유동자산"],
+    "tangible_assets":        ["유형자산"],
+    "intangible_assets":      ["무형자산"],
+    "total_liabilities":      ["부채총계"],
+    "current_liabilities":    ["유동부채"],
+    "non_current_liabilities":["비유동부채"],
+    "equity":                 ["자본총계"],
+    "depreciation":           ["유형자산상각비","감가상각비","상각비"],
+}
+
+def _pnum(s) -> int | None:
+    try: return int(str(s).replace(",","").strip())
+    except: return None
+
+def _find_acct(items: list, key: str, field: str = "thstrm_amount") -> int | None:
+    for pat in ACCT_MAP.get(key, []):
+        for it in items:
+            if pat in it.get("account_nm",""):
+                return _pnum(it.get(field,""))
+    return None
+
+def _build_row(items: list, field: str = "thstrm_amount") -> dict:
+    row = {k: _find_acct(items, k, field) for k in ACCT_MAP}
+    op, dep = row.get("operating_profit"), row.get("depreciation")
+    row["ebitda"] = (op or 0) + (dep or 0) if op is not None else None
+    return row
+
+def _fmt_won(v: int | None) -> str:
+    if v is None: return "-"
+    sign = "-" if v < 0 else ""
+    a = abs(v)
+    if a >= 1_000_000_000_000: return f"{sign}{a/1_000_000_000_000:.2f}조"
+    if a >= 100_000_000:       return f"{sign}{a/100_000_000:,.0f}억"
+    if a >= 10_000:            return f"{sign}{a/10_000:,.0f}만"
+    return f"{sign}{a:,}"
+
+def _fmtd(s: str) -> str:
+    s = (s or "").strip()
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}.{s[4:6]}.{s[6:]}"
+    return s or "-"
+
+async def _dart_search(name: str, client) -> tuple[str,str]:
+    if not DART_API_KEY: return "",""
+    try:
+        r = await client.get("https://opendart.fss.or.kr/api/company.json",
+            params={"crtfc_key":DART_API_KEY,"corp_name":name}, timeout=8.0)
+        d = r.json()
+        if d.get("status") != "000": return "",""
+        corps = d.get("results",[])
+        for c in corps:
+            if c.get("corp_name") == name:
+                return c.get("corp_code",""), (c.get("stock_code","") or "").strip()
+        if corps:
+            return corps[0].get("corp_code",""), (corps[0].get("stock_code","") or "").strip()
+    except Exception as e: logger.warning(f"DART search: {e}")
+    return "",""
+
+async def _dart_info(corp_code: str, client) -> dict:
+    if not DART_API_KEY or not corp_code: return {}
+    try:
+        r = await client.get("https://opendart.fss.or.kr/api/company.json",
+            params={"crtfc_key":DART_API_KEY,"corp_code":corp_code}, timeout=8.0)
+        d = r.json()
+        if d.get("status") != "000": return {}
+        cls_map = {"Y":"유가증권(KOSPI)","K":"코스닥(KOSDAQ)","N":"코넥스","E":"기타"}
+        return {
+            "corp_name":    d.get("corp_name",""),
+            "corp_name_eng":d.get("corp_name_eng",""),
+            "ceo_nm":       d.get("ceo_nm",""),
+            "est_dt":       _fmtd(d.get("est_dt","")),
+            "listing_dt":   _fmtd(d.get("listing_dt","")),
+            "stock_code":   (d.get("stock_code","") or "").strip(),
+            "corp_cls":     cls_map.get(d.get("corp_cls",""),""),
+            "adres":        d.get("adres",""),
+            "phn_no":       d.get("phn_no",""),
+            "hm_url":       d.get("hm_url",""),
+            "acc_mt":       d.get("acc_mt",""),
+        }
+    except Exception as e: logger.warning(f"DART info: {e}"); return {}
+
+async def _dart_fs(corp_code: str, year: int, reprt: str, client) -> list:
+    if not DART_API_KEY or not corp_code: return []
+    for fs_div in ["CFS","OFS"]:
+        try:
+            r = await client.get("https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json",
+                params={"crtfc_key":DART_API_KEY,"corp_code":corp_code,
+                        "bsns_year":str(year),"reprt_code":reprt,"fs_div":fs_div},
+                timeout=12.0)
+            d = r.json()
+            if d.get("status") == "000" and d.get("list"): return d["list"]
+        except Exception as e: logger.warning(f"DART fs {year} {reprt} {fs_div}: {e}")
+    return []
+
+async def _dart_holders(corp_code: str, year: int, client) -> list:
+    if not DART_API_KEY or not corp_code: return []
+    try:
+        r = await client.get("https://opendart.fss.or.kr/api/hyslrSttus.json",
+            params={"crtfc_key":DART_API_KEY,"corp_code":corp_code,
+                    "bsns_year":str(year),"reprt_code":"11011"}, timeout=8.0)
+        d = r.json()
+        if d.get("status") != "000": return []
+        return [{"name":s.get("nm",""),"relation":s.get("relate",""),
+                 "shares":s.get("stock_co",""),"ratio":s.get("posesn_stock_co","")}
+                for s in d.get("list",[])]
+    except Exception as e: logger.warning(f"DART holders: {e}"); return []
+
+async def _naver_metrics(code: str, client) -> dict:
+    if not code: return {}
+    result = {}
+    try:
+        r = await client.get(f"https://m.stock.naver.com/api/stock/{code}/basic",
+            headers=HEADERS, timeout=5.0)
+        d = r.json()
+        price = d.get("closePrice","").replace(",","")
+        diff  = d.get("compareToPreviousClosePrice","")
+        ratio = d.get("fluctuationsRatio","")
+        sign  = "+" if diff and not diff.startswith("-") else ""
+        result.update({
+            "price":      f"{int(price):,}원" if price.lstrip("-").isdigit() else "-",
+            "diff":       f"{sign}{diff}원" if diff else "-",
+            "ratio":      f"{sign}{ratio}%" if ratio else "-",
+            "up":         not (diff or "").startswith("-"),
+            "market_cap": d.get("marketValue",""),
+            "market":     d.get("marketType",""),
+        })
+    except Exception as e: logger.warning(f"Naver basic: {e}")
+    try:
+        r2 = await client.get(f"https://m.stock.naver.com/api/stock/{code}/invest",
+            headers=HEADERS, timeout=5.0)
+        d2 = r2.json()
+        for info in d2.get("totalInfos",[]):
+            k = info.get("code","").upper()
+            if k in {"PER","PBR","EPS","BPS","ROE","ROA","DIV","DPS"}:
+                result[k] = f"{info.get('value','-')}{info.get('unit','')}"
+    except Exception as e: logger.warning(f"Naver invest: {e}")
+    return result
+
+# ══════════════════════════════════════════════════════════════════════════════
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -560,6 +714,75 @@ async def get_stocks(codes: str = Query(...)):
                 return code, None
         results = await asyncio.gather(*[fetch_one(c) for c in code_list])
     return JSONResponse({code: data for code, data in results if data})
+
+@app.get("/api/company")
+async def get_company(q: str = Query(..., min_length=1)):
+    logger.info(f"=== Company: '{q}' ===")
+    cur = datetime.now().year
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        # DART 코드 검색
+        corp_code, dart_sc = await _dart_search(q, client)
+        # 종목코드: DART → COMPANY_INFO 순으로 확보
+        stock_code = dart_sc
+        if not stock_code:
+            for n, info in COMPANY_INFO.items():
+                if q == n or (len(q) > 1 and q in n):
+                    stock_code = info.get("code",""); break
+
+        # 연간(5개년) 분기(최근 5분기) 재무 + 기본정보 + 주주 + 주가 병렬 조회
+        annual_years = [cur-1-i for i in range(5)]
+        q_specs = [(cur-1,"11014"),(cur-1,"11013"),(cur-1,"11012"),
+                   (cur-2,"11014"),(cur-2,"11013")]
+        q_labels = [f"{y}/{'3Q' if r=='11014' else '2Q' if r=='11013' else '1Q'}"
+                    for y,r in q_specs]
+
+        results = await asyncio.gather(
+            _dart_info(corp_code, client),
+            _dart_holders(corp_code, cur-1, client),
+            _naver_metrics(stock_code, client),
+            *[_dart_fs(corp_code, y, "11011", client) for y in annual_years],
+            *[_dart_fs(corp_code, y, r,       client) for y,r in q_specs],
+            return_exceptions=True,
+        )
+
+        corp_info  = results[0] if isinstance(results[0], dict) else {}
+        holders    = results[1] if isinstance(results[1], list) else []
+        stock_data = results[2] if isinstance(results[2], dict) else {}
+        raw_ann = results[3:3+len(annual_years)]
+        raw_qtr = results[3+len(annual_years):]
+
+        # 연간 재무 파싱
+        annual_fs = []
+        for items, year in zip(raw_ann, annual_years):
+            if isinstance(items, list) and items:
+                row = _build_row(items)
+                annual_fs.append({"period":str(year), **{k:_fmt_won(v) for k,v in row.items()}})
+
+        # 분기 재무 파싱
+        quarter_fs = []
+        for items, label in zip(raw_qtr, q_labels):
+            if isinstance(items, list) and items:
+                row = _build_row(items)
+                quarter_fs.append({"period":label, **{k:_fmt_won(v) for k,v in row.items()}})
+
+        # COMPANY_INFO 설명 보완
+        desc_from_db = ""
+        for n, info in COMPANY_INFO.items():
+            if q == n or (corp_info.get("corp_name") and corp_info["corp_name"] == n):
+                desc_from_db = info.get("desc",""); break
+
+        return JSONResponse({
+            "query":       q,
+            "has_dart":    bool(corp_code and DART_API_KEY),
+            "corp_code":   corp_code,
+            "corp_info":   corp_info,
+            "desc":        desc_from_db,
+            "stock_code":  stock_code,
+            "stock_data":  stock_data,
+            "annual_fs":   annual_fs,
+            "quarter_fs":  quarter_fs,
+            "shareholders":holders,
+        })
 
 @app.get("/api/health")
 async def health():
