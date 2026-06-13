@@ -794,6 +794,59 @@ async def _naver_shareholders_scrape(code: str, client) -> list:
     except Exception as e: logger.warning(f"Naver shareholders: {e}")
     return []
 
+async def _naver_stock_detail(code: str, client) -> dict:
+    """네이버 증권 메인 페이지 스크래핑 — 시가총액/상장주식수/외국인비율/상장일"""
+    result = {}
+    if not code: return result
+    hdrs = {**HEADERS, "Referer": "https://finance.naver.com/"}
+    try:
+        r = await client.get(f"https://finance.naver.com/item/main.naver?code={code}",
+            headers=hdrs, timeout=10.0)
+        soup = BeautifulSoup(r.content, "html.parser")
+
+        # 시가총액·상장주식수 — table.no_info 안의 th/td 쌍
+        for tbl in soup.select("table.no_info, table.tb_type1_ifrs, table"):
+            rows = tbl.find_all("tr")
+            for row in rows:
+                th = row.find("th")
+                td = row.find("td")
+                if not th or not td: continue
+                key = th.get_text(strip=True)
+                val = re.sub(r'\s+', ' ', td.get_text()).strip()
+                if "시가총액" in key:
+                    result["market_cap"] = val
+                elif "상장주식수" in key or "발행주식수" in key:
+                    result["issued_shares"] = val
+                elif "외국인" in key and ("비율" in key or "보유" in key):
+                    result["foreign_ratio"] = val.replace("%","").strip() + "%"
+                elif "상장일" in key:
+                    result["listing_dt"] = val
+
+        # 외국인 비율 — 별도 span/div (fallback)
+        if not result.get("foreign_ratio"):
+            for tag in soup.select("em#_foreign_hold_ratio, span.blind"):
+                txt = tag.get_text(strip=True)
+                if "%" in txt and len(txt) < 15:
+                    result["foreign_ratio"] = txt if "%" in txt else txt+"%"
+                    break
+
+        # 상장일 fallback — coinfo 페이지
+        if not result.get("listing_dt"):
+            try:
+                rc = await client.get(
+                    f"https://finance.naver.com/item/coinfo.naver?code={code}",
+                    headers=hdrs, timeout=8.0)
+                sc = BeautifulSoup(rc.content, "html.parser")
+                for row in sc.find_all("tr"):
+                    th = row.find("th")
+                    td = row.find("td")
+                    if th and td and "상장일" in th.get_text():
+                        result["listing_dt"] = td.get_text(strip=True)
+                        break
+            except Exception: pass
+    except Exception as e: logger.warning(f"Naver stock detail: {e}")
+    return result
+
 async def _naver_metrics(code: str, client) -> dict:
     if not code: return {}
     result = {}
@@ -805,24 +858,12 @@ async def _naver_metrics(code: str, client) -> dict:
         diff  = d.get("compareToPreviousClosePrice","")
         ratio = d.get("fluctuationsRatio","")
         sign  = "+" if diff and not diff.startswith("-") else ""
-        # 발행주식수 포맷 (주)
-        issued_raw = d.get("issuedShares","") or d.get("issueAmount","") or ""
-        issued_clean = issued_raw.replace(",","")
-        issued_fmt = ""
-        if issued_clean.isdigit():
-            n = int(issued_clean)
-            if n >= 100_000_000: issued_fmt = f"{n/100_000_000:.2f}억주"
-            elif n >= 10_000:    issued_fmt = f"{n/10_000:.0f}만주"
-            else:                issued_fmt = f"{n:,}주"
         result.update({
-            "price":         f"{int(price):,}원" if price.lstrip("-").isdigit() else "-",
-            "diff":          f"{sign}{diff}원" if diff else "-",
-            "ratio":         f"{sign}{ratio}%" if ratio else "-",
-            "up":            not (diff or "").startswith("-"),
-            "market_cap":    d.get("marketValue",""),
-            "market":        d.get("marketType",""),
-            "issued_shares": issued_fmt,
-            "foreign_ratio": d.get("foreignRatio","") or d.get("foreignOwnershipRatio",""),
+            "price":  f"{int(price):,}원" if price.lstrip("-").isdigit() else "-",
+            "diff":   f"{sign}{diff}원" if diff else "-",
+            "ratio":  f"{sign}{ratio}%" if ratio else "-",
+            "up":     not (diff or "").startswith("-"),
+            "market": d.get("marketType",""),
         })
     except Exception as e: logger.warning(f"Naver basic: {e}")
     try:
@@ -834,20 +875,6 @@ async def _naver_metrics(code: str, client) -> dict:
             if k in {"PER","PBR","EPS","BPS","ROE","ROA","DIV","DPS"}:
                 result[k] = f"{info.get('value','-')}{info.get('unit','')}"
     except Exception as e: logger.warning(f"Naver invest: {e}")
-    # 외국인 보유 비율 (별도 endpoint fallback)
-    if not result.get("foreign_ratio"):
-        try:
-            r3 = await client.get(f"https://m.stock.naver.com/api/stock/{code}/investor",
-                headers=HEADERS, timeout=5.0)
-            d3 = r3.json()
-            # 외국인 비율 필드 탐색
-            fr = (d3.get("foreignRatio") or d3.get("foreignOwnershipRatio")
-                  or d3.get("foreigner_hold_ratio") or "")
-            if fr: result["foreign_ratio"] = str(fr)
-        except Exception: pass
-    if result.get("foreign_ratio"):
-        fr = str(result["foreign_ratio"]).replace("%","")
-        result["foreign_ratio"] = f"{fr}%"
     return result
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -925,6 +952,7 @@ async def get_company(q: str = Query(..., min_length=1)):
             _naver_metrics(stock_code, client),
             _naver_biz_info(stock_code, client),
             _naver_shareholders_scrape(stock_code, client),
+            _naver_stock_detail(stock_code, client),
             *[_dart_fs(corp_code, y, "11011", client) for y in annual_years],
             *[_dart_fs(corp_code, y, r,       client) for y,r in q_specs],
             return_exceptions=True,
@@ -935,10 +963,17 @@ async def get_company(q: str = Query(..., min_length=1)):
         stock_data      = results[2] if isinstance(results[2], dict) else {}
         biz_info        = results[3] if isinstance(results[3], dict) else {}
         naver_holders   = results[4] if isinstance(results[4], list) else []
+        naver_detail    = results[5] if isinstance(results[5], dict) else {}
         # 상장사면 네이버 주주 우선, 없으면 DART fallback
         holders = naver_holders if naver_holders else dart_holders
-        raw_ann = results[5:5+len(annual_years)]
-        raw_qtr = results[5+len(annual_years):]
+        # 네이버 상세에서 시가총액/주식수/외국인/상장일 보완
+        stock_data["market_cap"]    = naver_detail.get("market_cap","")    or stock_data.get("market_cap","")
+        stock_data["issued_shares"] = naver_detail.get("issued_shares","") or stock_data.get("issued_shares","")
+        stock_data["foreign_ratio"] = naver_detail.get("foreign_ratio","") or stock_data.get("foreign_ratio","")
+        if not corp_info.get("listing_dt") or corp_info.get("listing_dt") == "-":
+            corp_info["listing_dt"] = naver_detail.get("listing_dt","") or "-"
+        raw_ann = results[6:6+len(annual_years)]
+        raw_qtr = results[6+len(annual_years):]
 
         # 연간 재무 파싱
         annual_fs = []
