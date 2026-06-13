@@ -413,7 +413,7 @@ const FS_LABEL = {
   total_liabilities:'총부채', current_liabilities:'유동부채',
   non_current_liabilities:'비유동부채', equity:'자본총계',
 };
-const IS_KEYS = ['revenue','cogs','gross_profit','sga','operating_profit','ebitda','pretax_profit','tax','net_profit'];
+const IS_KEYS = ['revenue','cogs','gross_profit','sga','operating_profit','pretax_profit','tax','net_profit'];
 const BS_KEYS = ['total_assets','current_assets','non_current_assets','tangible_assets','intangible_assets','total_liabilities','current_liabilities','non_current_liabilities','equity'];
 const INVEST_KEYS = ['PER','PBR','EPS','BPS','ROE','ROA','DIV'];
 
@@ -617,8 +617,6 @@ function renderCompanyOverview(d) {
         <div class="flex gap-1 px-5 pt-3 pb-1">
           <button id="bizTabOverview" onclick="switchBizTab('overview')"
             class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white">주요사업</button>
-          <button id="bizTabProducts" onclick="switchBizTab('products')"
-            class="px-3 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:bg-surface-muted">제품/서비스</button>
           ${(bi.segments && bi.segments.length) ? `
           <button id="bizTabSegments" onclick="switchBizTab('segments')"
             class="px-3 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:bg-surface-muted">매출 비중</button>` : ''}
@@ -671,7 +669,7 @@ function renderFsTable() {
     return;
   }
   const periods = rows.map(r=>r.period);
-  const bold = new Set(['revenue','operating_profit','ebitda','net_profit','total_assets','total_liabilities','equity']);
+  const bold = new Set(['revenue','operating_profit','net_profit','total_assets','total_liabilities','equity']);
   const hl   = new Set(['operating_profit','net_profit','equity']);
   el.innerHTML = `<div class="overflow-x-auto">
     <table class="w-full text-xs border-collapse">

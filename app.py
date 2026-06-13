@@ -702,16 +702,47 @@ async def _dart_fs(corp_code: str, year: int, reprt: str, client) -> list:
 
 async def _dart_holders(corp_code: str, year: int, client) -> list:
     if not DART_API_KEY or not corp_code: return []
+    for y in [year, year - 1]:
+        try:
+            r = await client.get("https://opendart.fss.or.kr/api/hyslrSttus.json",
+                params={"crtfc_key":DART_API_KEY,"corp_code":corp_code,
+                        "bsns_year":str(y),"reprt_code":"11011"}, timeout=8.0)
+            d = r.json()
+            if d.get("status") != "000" or not d.get("list"): continue
+            return [{"name":    s.get("nm",""),
+                     "relation":s.get("relate",""),
+                     "shares":  s.get("trmend_posesn_stock_co",""),
+                     "ratio":   s.get("trmend_posesn_stock_qota_rt","")}
+                    for s in d["list"]]
+        except Exception as e: logger.warning(f"DART holders {y}: {e}")
+    return []
+
+async def _search_holders_web(company: str, client) -> list:
+    """네이버 검색으로 주주현황 추출 (비상장사 fallback)"""
     try:
-        r = await client.get("https://opendart.fss.or.kr/api/hyslrSttus.json",
-            params={"crtfc_key":DART_API_KEY,"corp_code":corp_code,
-                    "bsns_year":str(year),"reprt_code":"11011"}, timeout=8.0)
-        d = r.json()
-        if d.get("status") != "000": return []
-        return [{"name":s.get("nm",""),"relation":s.get("relate",""),
-                 "shares":s.get("stock_co",""),"ratio":s.get("posesn_stock_co","")}
-                for s in d.get("list",[])]
-    except Exception as e: logger.warning(f"DART holders: {e}"); return []
+        q = quote(f"{company} 주주현황 대주주 지분율")
+        r = await client.get(f"https://search.naver.com/search.naver?where=web&query={q}",
+            headers=HEADERS, timeout=8.0)
+        soup = BeautifulSoup(r.content, "html.parser")
+        text = soup.get_text()
+        # "이름 N%" 또는 "이름 N.N%" 패턴 추출
+        hits = re.findall(r'([가-힣A-Za-z\(\)\s]{2,20}?)\s+(\d{1,2}(?:\.\d{1,2})?)\s*%', text)
+        skip = {"주주","대주주","소주주","지분","보유","이상","이하","합계","기타","총"}
+        seen, results = set(), []
+        for name, pct in hits:
+            name = name.strip()
+            if not name or name in seen or any(k in name for k in skip): continue
+            try:
+                v = float(pct)
+                if not 1.0 <= v <= 100.0: continue
+            except: continue
+            seen.add(name)
+            results.append({"name": name, "relation": "-", "shares": "-", "ratio": pct})
+            if len(results) >= 6: break
+        return results
+    except Exception as e:
+        logger.warning(f"Web holders search: {e}")
+        return []
 
 async def _naver_coinfo(code: str, client) -> dict:
     """네이버 증권 coinfo 페이지 한 번에 스크래핑 (기업개요·시총·주식수·외국인비율)"""
@@ -903,21 +934,18 @@ async def get_company(q: str = Query(..., min_length=1)):
             _dart_info(corp_code, client),
             _dart_holders(corp_code, cur-1, client),
             _naver_metrics(stock_code, client),
-            _naver_coinfo(stock_code, client),          # 기업개요+시총+주식수+외국인
-            _naver_shareholders_scrape(stock_code, client),
+            _naver_coinfo(stock_code, client),  # 기업개요+시총+주식수+외국인
             *[_dart_fs(corp_code, y, "11011", client) for y in annual_years],
             *[_dart_fs(corp_code, y, r,       client) for y,r in q_specs],
             return_exceptions=True,
         )
 
-        corp_info       = results[0] if isinstance(results[0], dict) else {}
-        dart_holders    = results[1] if isinstance(results[1], list) else []
-        stock_data      = results[2] if isinstance(results[2], dict) else {}
-        naver_ci        = results[3] if isinstance(results[3], dict) else {}
-        naver_holders   = results[4] if isinstance(results[4], list) else []
-        # 상장사면 네이버 주주 우선, 없으면 DART fallback
-        holders = naver_holders if naver_holders else dart_holders
-        # 네이버 코인포에서 시가총액·주식수·외국인비율 보완
+        corp_info    = results[0] if isinstance(results[0], dict) else {}
+        dart_holders = results[1] if isinstance(results[1], list) else []
+        stock_data   = results[2] if isinstance(results[2], dict) else {}
+        naver_ci     = results[3] if isinstance(results[3], dict) else {}
+
+        # 네이버 코인포에서 시가총액·주식수·외국인비율
         stock_data["market_cap"]    = naver_ci.get("market_cap","")
         stock_data["issued_shares"] = naver_ci.get("issued_shares","")
         stock_data["foreign_ratio"] = naver_ci.get("foreign_ratio","")
@@ -925,8 +953,14 @@ async def get_company(q: str = Query(..., min_length=1)):
         biz_info = {"overview": naver_ci.get("overview",""),
                     "products": naver_ci.get("products",[]),
                     "segments": naver_ci.get("segments",[])}
-        raw_ann = results[5:5+len(annual_years)]
-        raw_qtr = results[5+len(annual_years):]
+
+        # 주주: DART 우선, 없으면 웹 검색 fallback
+        if dart_holders:
+            holders = dart_holders
+        else:
+            holders = await _search_holders_web(q, client)
+        raw_ann = results[4:4+len(annual_years)]
+        raw_qtr = results[4+len(annual_years):]
 
         # 연간 재무 파싱
         annual_fs = []
