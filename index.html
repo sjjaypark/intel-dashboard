@@ -45,6 +45,8 @@
     /* 토스트 */
     #toast{position:fixed;bottom:24px;right:24px;z-index:999;transition:opacity .3s,transform .3s}
     #toast.hide{opacity:0;transform:translateY(8px);pointer-events:none}
+    /* Tailwind .grid overrides .hidden — force hidden with !important */
+    .hidden{display:none!important}
   </style>
 </head>
 <body class="min-h-screen">
