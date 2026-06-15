@@ -5119,6 +5119,20 @@ async def _naver_metrics(code: str, client) -> dict:
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+@app.on_event("startup")
+async def _preload_dart_cache():
+    """서버 시작 시 DART 전체 법인 캐시를 백그라운드로 로드 (비상장사 자동완성용)"""
+    if not DART_API_KEY:
+        return
+    async def _load():
+        try:
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                await _load_corp_cache(client)
+            logger.info(f"DART corp cache preloaded: {len(_CORP_CACHE)} companies")
+        except Exception as e:
+            logger.warning(f"DART corp cache preload failed: {e}")
+    asyncio.create_task(_load())
+
 @app.get("/")
 async def root():
     r = FileResponse("index.html")
@@ -5324,51 +5338,50 @@ async def get_company(q: str = Query(..., min_length=1)):
 
 @app.get("/api/suggest")
 async def suggest(q: str = Query(..., min_length=1)):
-    """회사 이름 자동완성 — DART_CORP_MAP + COMPANY_INFO + UNLISTED_COMPANIES"""
+    """회사 이름 자동완성 — COMPANY_INFO + UNLISTED + DART_CORP_MAP + DART 전체 캐시"""
     q_lower = q.strip()
     results: list[dict] = []
     seen: set[str] = set()
 
-    # 1. COMPANY_INFO (상장 주요기업, 태그·설명 보유 → 우선 노출)
+    def _rank(name: str) -> int:
+        if name == q_lower: return 0
+        if name.startswith(q_lower): return 1
+        return 2
+
+    # 1. COMPANY_INFO (상장 주요기업)
     for name, info in COMPANY_INFO.items():
         if q_lower in name or name.startswith(q_lower):
             seen.add(name)
-            results.append({
-                "name":        name,
-                "code":        info.get("code",""),
-                "desc":        info.get("desc",""),
-                "is_unlisted": False,
-            })
+            results.append({"name": name, "code": info.get("code",""),
+                            "desc": info.get("desc",""), "is_unlisted": False})
 
-    # 2. UNLISTED_COMPANIES (비상장사)
+    # 2. UNLISTED_COMPANIES (하드코딩 비상장사)
     for name, info in UNLISTED_COMPANIES.items():
         if name not in seen and (q_lower in name or name.startswith(q_lower)):
             seen.add(name)
-            results.append({
-                "name":        name,
-                "code":        "",
-                "desc":        info.get("desc",""),
-                "is_unlisted": True,
-                "industry":    info.get("industry",""),
-            })
+            results.append({"name": name, "code": "", "desc": info.get("desc",""),
+                            "is_unlisted": True, "industry": info.get("industry","")})
 
-    # 3. DART_CORP_MAP (전체 상장사 3,936개 — 위에서 못 찾은 것 보완)
+    # 3. DART_CORP_MAP (상장사 3,936개)
     for name, (corp_code, stock_code) in DART_CORP_MAP.items():
         if name not in seen and (q_lower in name or name.startswith(q_lower)):
             seen.add(name)
-            results.append({
-                "name":        name,
-                "code":        stock_code,
-                "desc":        "",
-                "is_unlisted": False,
-            })
+            results.append({"name": name, "code": stock_code,
+                            "desc": "", "is_unlisted": not bool(stock_code)})
 
-    results.sort(key=lambda x: (
-        0 if x["name"] == q_lower else        # 완전 일치 최우선
-        1 if x["name"].startswith(q_lower) else  # 시작 일치
-        2                                         # 포함 일치
-    ))
-    return JSONResponse({"suggestions": results[:15]})
+    # 4. DART 전체 캐시 (비상장 포함 ~100,000개) — 이미 로드된 경우만 검색
+    if _CORP_CACHE:
+        for name, (corp_code, stock_code) in _CORP_CACHE.items():
+            if name not in seen and (q_lower in name or name.startswith(q_lower)):
+                seen.add(name)
+                results.append({"name": name, "code": stock_code,
+                                "desc": "", "is_unlisted": not bool(stock_code)})
+
+    results.sort(key=lambda x: (_rank(x["name"]), len(x["name"])))
+    return JSONResponse({
+        "suggestions": results[:15],
+        "dart_cache_loaded": bool(_CORP_CACHE),  # 전체 캐시 로드 여부 프론트에 전달
+    })
 
 _home_cache: dict = {"payload": None, "ts": 0.0}
 HOME_CACHE_TTL = 300  # 5분

@@ -479,9 +479,9 @@ async function onSearchInput() {
     try {
       const data = await fetch(`${API}/api/suggest?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():null);
       const items = data?.suggestions || [];
-      if (!items.length) { hideSuggest(); return; }
       const dd = $('suggestDropdown');
-      dd.innerHTML = items.map(s => {
+
+      const itemsHtml = items.map(s => {
         const nameHtml = esc(s.name).replace(
           new RegExp(esc(q),'gi'),
           m => `<span class="text-primary font-bold">${m}</span>`
@@ -498,7 +498,24 @@ async function onSearchInput() {
           ${s.code ? `<span class="text-xs font-mono text-ink-subtle shrink-0">${esc(s.code)}</span>` : ''}
         </div>`;
       }).join('');
-      dd.classList.remove('hidden');
+
+      // 입력값과 정확히 일치하는 항목이 없으면 "직접 검색" 항목 추가
+      const exactMatch = items.some(s => s.name === q);
+      const directHtml = !exactMatch ? `
+        <div class="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-blue-50 border-t border-surface-border"
+             onmousedown="selectSuggest(${JSON.stringify(q)})">
+          <svg class="w-3.5 h-3.5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <div class="flex-1 min-w-0">
+            <span class="text-sm text-primary font-semibold">"${esc(q)}"</span>
+            <span class="text-xs text-ink-subtle ml-1.5">회사 정보 직접 검색</span>
+          </div>
+        </div>` : '';
+
+      dd.innerHTML = itemsHtml + directHtml;
+      if (dd.innerHTML) dd.classList.remove('hidden');
+      else hideSuggest();
     } catch { hideSuggest(); }
   }, 150);
 }
