@@ -5047,9 +5047,16 @@ async def suggest(q: str = Query(..., min_length=1)):
     results.sort(key=lambda x: len(x["name"]))
     return JSONResponse({"suggestions": results[:15]})
 
+_home_cache: dict = {"payload": None, "ts": 0.0}
+HOME_CACHE_TTL = 300  # 5분
+
 @app.get("/api/home")
 async def get_home():
-    """홈 화면 — Google RSS만 사용해 속도 최적화 (6개 병렬 요청)"""
+    """홈 화면 — Google RSS만 사용해 속도 최적화 (5분 캐시)"""
+    now = time.time()
+    if _home_cache["payload"] and now - _home_cache["ts"] < HOME_CACHE_TTL:
+        return JSONResponse(_home_cache["payload"])
+
     KEYWORDS  = ["AI 반도체", "2차전지", "휴머노이드"]
     COMPANIES = ["삼성전자", "SK하이닉스", "현대자동차"]
     ALL = KEYWORDS + COMPANIES
@@ -5069,8 +5076,10 @@ async def get_home():
         t = "keyword" if label in KEYWORDS else "company"
         sections.append({"type": t, "label": label, "items": items[:5]})
 
-    return JSONResponse({"sections": sections,
-                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    payload = {"sections": sections, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")}
+    _home_cache["payload"] = payload
+    _home_cache["ts"] = now
+    return JSONResponse(payload)
 
 @app.get("/api/health")
 async def health():

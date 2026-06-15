@@ -296,6 +296,12 @@
 <!-- ══ JAVASCRIPT ═══════════════════════════════════════════════════════════════ -->
 <script>
 const API = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
+const HOME_REFRESH_MS   = 10 * 60 * 1000; // 10분
+const SEARCH_REFRESH_MS = 10 * 60 * 1000; // 10분
+let homeRefreshTimer   = null;
+let searchRefreshTimer = null;
+let lastSearchQuery    = '';
+let lastSearchMode     = '';
 const QUICK_TAGS = [
   {label:'유리기판',icon:'🔲'},{label:'ESS',icon:'⚡'},{label:'2차전지 양극재',icon:'🔋'},
   {label:'휴머노이드 액추에이터',icon:'🤖'},{label:'스페이스엑스',icon:'🚀'},
@@ -371,14 +377,17 @@ function init() {
 function goHome() {
   $('searchInput').value = '';
   hideSuggest();
+  if (searchRefreshTimer) { clearTimeout(searchRefreshTimer); searchRefreshTimer = null; }
   ['companyPanel','mainGrid','statusBar','emptyState','skeletonGrid','suggestCard'].forEach(id=>{
     const el=$(id); if(el) el.classList.add('hidden');
   });
   $('welcomeScreen').classList.remove('hidden');
   history.replaceState(null,'',location.pathname);
+  if (!homeRefreshTimer) homeRefreshTimer = setTimeout(()=>loadHomeData(true), HOME_REFRESH_MS);
 }
 
-async function loadHomeData() {
+async function loadHomeData(silent=false) {
+  if (homeRefreshTimer) { clearTimeout(homeRefreshTimer); homeRefreshTimer = null; }
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(()=>ctrl.abort(), 25000);
@@ -387,7 +396,11 @@ async function loadHomeData() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const sk = $('homeSkeleton'); if (sk) sk.remove();
-    if (data.timestamp) $('homeTimestamp').textContent = `${data.timestamp} 기준`;
+    if (data.timestamp) {
+      $('homeTimestamp').innerHTML =
+        `${data.timestamp} 기준 &nbsp;<button onclick="loadHomeData()" title="새로고침"
+          class="text-primary hover:text-primary/70 transition-colors">↻</button>`;
+    }
 
     const TYPE_ICON = { keyword:'🔍', company:'🏢' };
     const TYPE_COLOR = { keyword:'text-primary', company:'text-emerald-700' };
@@ -419,10 +432,18 @@ async function loadHomeData() {
 
     $('homeContent').classList.remove('hidden');
   } catch(e) {
-    $('homeSkeleton').innerHTML = `
-      <div class="col-span-full text-center py-12 text-ink-subtle text-sm">
-        뉴스를 불러오는 중 오류가 발생했습니다. 잠시 후 새로고침 해주세요.
-      </div>`;
+    if (!silent) {
+      const sk = $('homeSkeleton');
+      if (sk) sk.innerHTML = `
+        <div class="col-span-full text-center py-12 text-ink-subtle text-sm">
+          뉴스를 불러오는 중 오류가 발생했습니다. 잠시 후 새로고침 해주세요.
+        </div>`;
+    }
+  } finally {
+    // 홈 화면이 열려 있을 때만 재스케줄
+    if (!$('welcomeScreen').classList.contains('hidden')) {
+      homeRefreshTimer = setTimeout(()=>loadHomeData(true), HOME_REFRESH_MS);
+    }
   }
 }
 
@@ -508,10 +529,17 @@ async function runSearch() {
   const q = $('searchInput').value.trim();
   if (!q) { $('searchInput').focus(); return; }
 
+  // 자동 갱신 타이머 리셋
+  if (homeRefreshTimer)   { clearTimeout(homeRefreshTimer);   homeRefreshTimer = null; }
+  if (searchRefreshTimer) { clearTimeout(searchRefreshTimer); searchRefreshTimer = null; }
+  lastSearchQuery = q;
+  lastSearchMode  = searchMode;
+
   history_ = [q, ...history_.filter(h=>h!==q)].slice(0,10);
   saveHistory(); renderHistory();
   history.replaceState(null,'',`#q=${encodeURIComponent(q)}`);
 
+  $('welcomeScreen').classList.add('hidden');
   $('companyPanel').classList.add('hidden');
   $('companyPanel').innerHTML = '';
 
@@ -548,6 +576,31 @@ async function runSearch() {
       hideSkeleton();
       showError(err.message);
     }
+  }
+
+  // 검색 결과 자동 갱신 (뉴스만 — 재무 데이터는 제외)
+  if (searchMode !== 'company') {
+    searchRefreshTimer = setTimeout(refreshSearchNews, SEARCH_REFRESH_MS);
+  }
+}
+
+async function refreshSearchNews() {
+  if (!lastSearchQuery || lastSearchMode === 'company') return;
+  try {
+    const res = await fetch(`${API}/api/search?q=${encodeURIComponent(lastSearchQuery)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    currentData = data;
+    renderResults(data);
+    // 업데이트 시각 표시
+    const now = new Date();
+    const hm = now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+    const st = $('statusTime');
+    if (st) st.textContent = `${hm} 업데이트`;
+  } catch(_) {}
+  // 페이지가 여전히 검색 결과 화면이면 재스케줄
+  if (!$('welcomeScreen') || $('welcomeScreen').classList.contains('hidden')) {
+    searchRefreshTimer = setTimeout(refreshSearchNews, SEARCH_REFRESH_MS);
   }
 }
 
