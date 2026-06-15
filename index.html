@@ -67,23 +67,37 @@
         </div>
       </div>
 
-      <!-- 검색창 -->
-      <div class="flex-1 relative max-w-2xl">
-        <div class="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
-          <svg class="w-4 h-4 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-          </svg>
+      <!-- 검색 모드 탭 + 검색창 -->
+      <div class="flex-1 flex items-center gap-2 max-w-2xl">
+        <!-- 모드 탭 -->
+        <div class="flex rounded-lg border border-surface-border bg-surface-muted p-0.5 gap-0.5 flex-shrink-0">
+          <button id="modeNews" onclick="setSearchMode('news')"
+            class="px-3 py-1.5 text-xs font-semibold rounded-md bg-white text-primary shadow-sm transition-all">
+            📰 뉴스
+          </button>
+          <button id="modeCompany" onclick="setSearchMode('company')"
+            class="px-3 py-1.5 text-xs font-semibold rounded-md text-ink-muted hover:text-ink transition-all">
+            🏢 회사
+          </button>
         </div>
-        <input id="searchInput" type="text"
-          placeholder="산업 키워드 입력 — 유리기판, ESS, 스페이스엑스..."
-          class="w-full pl-10 pr-24 py-2.5 bg-surface-muted border border-surface-border rounded-xl text-sm text-ink placeholder-ink-subtle focus:outline-none focus:border-primary focus:bg-white transition-all duration-200"/>
-        <button id="searchBtn" onclick="runSearch()"
-          class="absolute inset-y-0 right-1.5 my-1 px-4 bg-primary hover:bg-primary-dark text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1">
-          검색
-          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
-          </svg>
-        </button>
+        <!-- 검색창 -->
+        <div class="flex-1 relative">
+          <div class="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
+            <svg class="w-4 h-4 text-ink-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+          <input id="searchInput" type="text"
+            placeholder="산업 키워드 입력 — 유리기판, ESS, 스페이스엑스..."
+            class="w-full pl-10 pr-24 py-2.5 bg-surface-muted border border-surface-border rounded-xl text-sm text-ink placeholder-ink-subtle focus:outline-none focus:border-primary focus:bg-white transition-all duration-200"/>
+          <button id="searchBtn" onclick="runSearch()"
+            class="absolute inset-y-0 right-1.5 my-1 px-4 bg-primary hover:bg-primary-dark text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1">
+            검색
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- 우측 버튼들 -->
@@ -296,6 +310,21 @@ const QUICK_TAGS = [
 
 const $ = id => document.getElementById(id);
 let currentData = null;
+let searchMode  = 'news'; // 'news' | 'company'
+
+function setSearchMode(mode) {
+  searchMode = mode;
+  const isNews = mode === 'news';
+  $('modeNews').className    = isNews
+    ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-white text-primary shadow-sm transition-all'
+    : 'px-3 py-1.5 text-xs font-semibold rounded-md text-ink-muted hover:text-ink transition-all';
+  $('modeCompany').className = !isNews
+    ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-white text-primary shadow-sm transition-all'
+    : 'px-3 py-1.5 text-xs font-semibold rounded-md text-ink-muted hover:text-ink transition-all';
+  $('searchInput').placeholder = isNews
+    ? '산업 키워드 입력 — 유리기판, ESS, 스페이스엑스...'
+    : '회사명 입력 — 삼성전자, 인벤티지랩, SK하이닉스...';
+}
 let bookmarks   = JSON.parse(localStorage.getItem('intel_bookmarks') || '[]');
 let history_    = JSON.parse(localStorage.getItem('intel_history')   || '[]');
 
@@ -378,29 +407,43 @@ async function runSearch() {
   saveHistory(); renderHistory();
   history.replaceState(null,'',`#q=${encodeURIComponent(q)}`);
 
-  showSkeleton();
   $('companyPanel').classList.add('hidden');
   $('companyPanel').innerHTML = '';
 
-  // 뉴스/블로그 + 회사개요 병렬 조회
-  const searchP  = fetch(`${API}/api/search?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():Promise.reject(r.status));
-  const companyP = fetch(`${API}/api/company?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():null).catch(()=>null);
-
-  try {
-    const data = await searchP;
-    currentData = data;
-    renderResults(data);
-  } catch(err) {
-    hideSkeleton();
-    showError(err.message);
-  }
-
-  // 회사 개요는 별도로 로드 (뉴스보다 느려도 됨)
-  companyP.then(cData => {
-    if (cData && (cData.corp_info?.corp_name || cData.stock_data?.price)) {
-      renderCompanyOverview(cData);
+  if (searchMode === 'company') {
+    // ── 회사 모드 ──────────────────────────────────────────────
+    ['mainGrid','emptyState','statusBar'].forEach(id => $(id).classList.add('hidden'));
+    $('skeletonGrid').classList.remove('hidden');
+    $('searchBtn').disabled = true;
+    try {
+      const cData = await fetch(`${API}/api/company?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():null);
+      $('skeletonGrid').classList.add('hidden');
+      $('searchBtn').disabled = false;
+      if (cData && (cData.corp_info?.corp_name || cData.stock_data?.price)) {
+        renderCompanyOverview(cData);
+      } else {
+        $('emptyMsg').textContent = `"${q}" 회사 정보를 찾을 수 없습니다.`;
+        $('emptyState').classList.remove('hidden');
+      }
+    } catch(err) {
+      $('skeletonGrid').classList.add('hidden');
+      $('searchBtn').disabled = false;
+      $('emptyMsg').textContent = '회사 정보 조회 중 오류가 발생했습니다.';
+      $('emptyState').classList.remove('hidden');
     }
-  }).catch(()=>{});
+  } else {
+    // ── 뉴스 모드 ──────────────────────────────────────────────
+    showSkeleton();
+    const searchP = fetch(`${API}/api/search?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():Promise.reject(r.status));
+    try {
+      const data = await searchP;
+      currentData = data;
+      renderResults(data);
+    } catch(err) {
+      hideSkeleton();
+      showError(err.message);
+    }
+  }
 }
 
 // ── 회사 개요 ─────────────────────────────────────────────────────────────────
