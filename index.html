@@ -386,7 +386,7 @@ async function loadHomeData() {
     clearTimeout(timer);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    $('homeSkeleton').classList.add('hidden');
+    const sk = $('homeSkeleton'); if (sk) sk.remove();
     if (data.timestamp) $('homeTimestamp').textContent = `${data.timestamp} 기준`;
 
     const TYPE_ICON = { keyword:'🔍', company:'🏢' };
