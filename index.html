@@ -370,6 +370,7 @@ function goHome() {
   ['companyPanel','statusBar','emptyState','suggestCard'].forEach(id=>{
     const el=$(id); if(el) el.classList.add('hidden');
   });
+  const ue = $('unlistedExtra'); if (ue) ue.remove();
   $('mainGrid').style.display = 'none';
   $('welcomeScreen').classList.remove('hidden');
   history.replaceState(null,'',location.pathname);
@@ -563,6 +564,7 @@ async function runSearch() {
       $('searchBtn').disabled = false;
       if (cData && (cData.corp_info?.corp_name || cData.stock_code || cData.desc || cData.is_unlisted)) {
         renderCompanyOverview(cData);
+        if (cData.is_unlisted) renderUnlistedExtra(cData);
       } else {
         $('emptyMsg').textContent = `"${q}" 회사 정보를 찾을 수 없습니다.`;
         $('emptyState').classList.remove('hidden');
@@ -1139,6 +1141,84 @@ function toggleBookmarkView() {
   currentData = fakeData;
   $('searchInput').value = '북마크';
   renderResults(fakeData);
+}
+
+// ── 비상장사 전용: 관련 뉴스 + 유사 상장사 ──────────────────────────────────
+function renderUnlistedExtra(d) {
+  const news    = d.related_news   || [];
+  const similar = d.similar_listed || [];
+
+  // 기존 비상장 extra 패널 제거 후 재생성
+  let extra = $('unlistedExtra');
+  if (extra) extra.remove();
+
+  extra = document.createElement('div');
+  extra.id = 'unlistedExtra';
+  extra.className = 'mt-4 grid gap-4 grid-cols-1 sm:grid-cols-[1fr_300px]';
+
+  // ── 왼쪽: 관련 뉴스 ──────────────────────────────────────────
+  const newsHtml = news.length ? news.map((item, i) => {
+    const date = item.pubDate ? `<span class="text-ink-subtle text-[10px] flex-shrink-0">${esc(item.pubDate)}</span>` : '';
+    const src  = item.source  ? `<span class="font-semibold text-primary text-[10px] truncate max-w-[90px]">${esc(item.source)}</span>` : '';
+    const desc = item.summary ? `<p class="text-[11px] text-ink-subtle mt-1 line-clamp-2 leading-relaxed">${esc(item.summary)}</p>` : '';
+    return `
+      <a href="${esc(item.link||'#')}" target="_blank" rel="noopener"
+         class="block p-3 rounded-xl border border-surface-border bg-white hover:border-primary hover:shadow-sm transition-all group">
+        <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
+          ${src}${src&&date?`<span class="text-surface-border text-[10px]">·</span>`:''}${date}
+        </div>
+        <p class="text-xs font-semibold text-ink group-hover:text-primary leading-snug line-clamp-2">${esc(item.title||'')}</p>
+        ${desc}
+      </a>`;
+  }).join('') : `<div class="py-10 text-center text-xs text-ink-subtle">관련 뉴스가 없습니다</div>`;
+
+  // ── 오른쪽: 유사 상장사 ──────────────────────────────────────
+  const simHtml = similar.length ? similar.map(s => {
+    const bizBadges = s.similar_biz ? s.similar_biz.split(' · ').map(b =>
+      `<span class="inline-block bg-blue-50 text-blue-600 text-[10px] px-1.5 py-0.5 rounded font-medium">${esc(b)}</span>`
+    ).join(' ') : '';
+    return `
+      <a href="${esc(s.url)}" target="_blank" rel="noopener"
+         class="flex flex-col gap-1 px-4 py-3 hover:bg-surface-muted transition-colors group border-b border-surface-border last:border-0">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm font-bold text-ink group-hover:text-primary">${esc(s.name)}</span>
+          <span class="text-[10px] font-mono text-ink-subtle shrink-0">${esc(s.code)}</span>
+        </div>
+        ${bizBadges ? `<div class="flex flex-wrap gap-1">${bizBadges}</div>` : ''}
+        ${s.desc ? `<p class="text-[11px] text-ink-subtle leading-relaxed line-clamp-2">${esc(s.desc)}</p>` : ''}
+      </a>`;
+  }).join('') : `<div class="px-4 py-8 text-center text-xs text-ink-subtle">유사 상장사 데이터 없음</div>`;
+
+  extra.innerHTML = `
+    <!-- 관련 뉴스 -->
+    <div>
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-1 h-4 bg-primary rounded-full"></div>
+        <h2 class="text-sm font-bold text-ink">관련 뉴스</h2>
+        <span class="text-xs text-ink-subtle bg-white px-2 py-0.5 rounded-full border border-surface-border">${news.length}</span>
+      </div>
+      <div class="flex flex-col gap-2">${newsHtml}</div>
+    </div>
+
+    <!-- 유사 상장사 사이드바 -->
+    <div class="sm:sticky sm:top-[68px] self-start">
+      <div class="bg-white border border-surface-border rounded-xl overflow-hidden shadow-sm">
+        <div class="px-4 py-2.5 border-b border-surface-border bg-surface-muted flex items-center justify-between">
+          <h2 class="text-sm font-bold text-ink flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+            </svg>
+            유사 사업 상장사
+          </h2>
+          <span class="text-xs text-ink-subtle font-medium">${similar.length}개</span>
+        </div>
+        <div class="divide-y divide-surface-border max-h-[80vh] overflow-y-auto">${simHtml}</div>
+      </div>
+    </div>`;
+
+  // companyPanel 바로 뒤에 삽입
+  const panel = $('companyPanel');
+  panel.parentNode.insertBefore(extra, panel.nextSibling);
 }
 
 // ── 관련 상장사 ───────────────────────────────────────────────────────────────

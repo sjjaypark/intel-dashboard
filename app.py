@@ -485,6 +485,83 @@ def extract_companies_from_all(items: list, query: str) -> list:
 
     return results
 
+
+def _find_similar_listed(unlisted_name: str, unlisted_info: dict, dart_corp_info: dict) -> list:
+    """비상장사와 유사 사업을 영위하는 상장사 탐색 — 태그·업종·설명 기반 스코어링"""
+    u_tags: list[str] = [t.lower() for t in unlisted_info.get("tags", [])]
+    u_industry: str   = unlisted_info.get("industry", "").lower()
+    u_desc: str       = unlisted_info.get("desc", "").lower()
+    # DART 업종코드도 활용
+    dart_induty: str  = (dart_corp_info.get("induty_code") or dart_corp_info.get("induty_nm") or "").lower()
+
+    scores: dict[str, float] = {}
+    reasons: dict[str, list[str]] = {}
+
+    for name, info in COMPANY_INFO.items():
+        c_tags    = [t.lower() for t in info.get("tags", [])]
+        c_desc    = info.get("desc", "").lower()
+        c_code    = info.get("code", "")
+        if not c_code:
+            continue
+
+        pts = 0.0
+        matched: list[str] = []
+
+        # 1) 태그 교집합 (가장 강한 신호)
+        common_tags = set(u_tags) & set(c_tags)
+        for tag in common_tags:
+            pts += 4.0
+            matched.append(tag)
+
+        # 2) 비상장사 태그가 상장사 설명에 언급
+        for tag in u_tags:
+            if len(tag) >= 2 and tag in c_desc:
+                pts += 2.0
+                if tag not in matched:
+                    matched.append(tag)
+
+        # 3) 업종 매칭
+        if u_industry and u_industry in c_desc:
+            pts += 1.5
+            if u_industry not in matched:
+                matched.append(u_industry)
+
+        # 4) 비상장사 설명의 핵심 명사가 상장사 설명에 포함
+        desc_tokens = [t for t in re.split(r'[\s,·/·]+', u_desc) if len(t) >= 3]
+        for tok in desc_tokens[:10]:
+            if tok in c_desc:
+                pts += 0.5
+
+        if pts <= 0:
+            continue
+
+        scores[name] = pts
+        reasons[name] = matched[:4]  # 최대 4개 이유
+
+    ordered = sorted(scores.keys(), key=lambda n: -scores[n])
+
+    result = []
+    for name in ordered:
+        info    = COMPANY_INFO[name]
+        code    = info["code"]
+        similar_tags = reasons.get(name, [])
+        # 유사 사업 설명: 공통 태그를 자연어로 표현
+        if similar_tags:
+            reason_str = " · ".join(similar_tags)
+        else:
+            reason_str = ""
+        result.append({
+            "name":        name,
+            "code":        code,
+            "url":         f"https://finance.naver.com/item/main.naver?code={code}",
+            "desc":        info.get("desc", ""),
+            "similar_biz": reason_str,   # 유사 사업 설명
+            "score":       round(scores[name], 1),
+        })
+
+    return result
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  NEWS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -5320,20 +5397,32 @@ async def get_company(q: str = Query(..., min_length=1)):
                 if q == n or (corp_info.get("corp_name") and corp_info["corp_name"] == n):
                     desc_from_db = info.get("desc",""); break
 
+        # 비상장사: 관련 뉴스 + 유사 상장사 병렬 조회
+        related_news: list  = []
+        similar_listed: list = []
+        if unlisted_info:
+            related_news = await news_google_rss(q, client, limit=30, translate=False)
+            related_news = sort_by_date(related_news)
+            for it in related_news:
+                it.pop("_dt", None)
+            similar_listed = _find_similar_listed(q, unlisted_info, corp_info)
+
         return JSONResponse({
-            "query":        q,
-            "has_dart":     bool(corp_code and DART_API_KEY),
-            "is_unlisted":  bool(unlisted_info),
-            "corp_code":    corp_code,
-            "corp_info":    corp_info,
-            "desc":         desc_from_db,
-            "stock_code":   stock_code,
-            "stock_data":   stock_data,
-            "annual_fs":    annual_fs,
-            "quarter_fs":   quarter_fs,
-            "shareholders": holders,
-            "biz_info":     biz_info,
-            "extra_info":   extra_info,   # 비상장사 추가정보 (사람인·웹 수집)
+            "query":          q,
+            "has_dart":       bool(corp_code and DART_API_KEY),
+            "is_unlisted":    bool(unlisted_info),
+            "corp_code":      corp_code,
+            "corp_info":      corp_info,
+            "desc":           desc_from_db,
+            "stock_code":     stock_code,
+            "stock_data":     stock_data,
+            "annual_fs":      annual_fs,
+            "quarter_fs":     quarter_fs,
+            "shareholders":   holders,
+            "biz_info":       biz_info,
+            "extra_info":     extra_info,
+            "related_news":   related_news,    # 비상장사 관련 뉴스
+            "similar_listed": similar_listed,  # 유사 사업 상장사
         })
 
 @app.get("/api/suggest")
