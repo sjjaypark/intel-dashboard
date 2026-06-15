@@ -802,50 +802,52 @@ async def _search_holders_web(company: str, client) -> list:
 async def _krx_info(code: str, name: str, client) -> dict:
     """금융위원회 KRX 상장종목정보 API — 상장일·시장구분·ISIN 등"""
     if not KRX_API_KEY: return {}
-    result = {}
-    today = datetime.now().strftime("%Y%m%d")
-    # 종목코드로 먼저 시도, 없으면 종목명으로
+    # 최근 영업일 후보 (오늘~5일 전) — 주말·공휴일 대비
+    from datetime import timedelta
+    dates = [(datetime.now() - timedelta(days=i)).strftime("%Y%m%d") for i in range(1, 6)]
     queries = []
     if code: queries.append({"srtnCd": code})
     if name: queries.append({"itmsNm": name})
-    for extra in queries:
-        try:
-            r = await client.get(
-                "https://apis.data.go.kr/1160100/service/GetKrxListedInfoService/getItemInfo",
-                params={"serviceKey": KRX_API_KEY, "numOfRows": "5",
-                        "pageNo": "1", "resultType": "json",
-                        "basDt": today, **extra},
-                timeout=8.0)
-            if r.status_code != 200:
-                logger.warning(f"KRX API {r.status_code}: {r.text[:100]}")
-                continue
-            items = r.json().get("response",{}).get("body",{}).get("items",{})
-            lst = items.get("item",[]) if isinstance(items, dict) else []
-            if isinstance(lst, dict): lst = [lst]
-            if not lst: continue
-            # 코드 검색 시 정확 매칭, 이름 검색 시 첫 번째
-            hit = lst[0]
-            for item in lst:
-                if code and item.get("srtnCd","").strip().lstrip("0") == code.lstrip("0"):
-                    hit = item; break
-                if name and name in item.get("itmsNm",""):
-                    hit = item; break
-            lstg_raw = hit.get("lstgDt","")
-            mrkt     = hit.get("mrktCtg","")
-            isin     = hit.get("isinCd","")
-            corp_nm  = hit.get("corpNm","") or hit.get("itmsNm","")
-            result = {
-                "listing_dt": f"{lstg_raw[:4]}.{lstg_raw[4:6]}.{lstg_raw[6:]}" if len(lstg_raw)==8 else lstg_raw,
-                "mrkt_ctg":   mrkt,
-                "isin":       isin,
-                "corp_nm_krx":corp_nm,
-                "srtn_cd":    hit.get("srtnCd","").strip(),
-            }
-            logger.info(f"KRX hit: {corp_nm} {mrkt} {lstg_raw}")
-            break
-        except Exception as e:
-            logger.warning(f"KRX info ({extra}): {e}")
-    return result
+    for bas_dt in dates:
+        for extra in queries:
+            try:
+                r = await client.get(
+                    "https://apis.data.go.kr/1160100/service/GetKrxListedInfoService/getItemInfo",
+                    params={"serviceKey": KRX_API_KEY, "numOfRows": "5",
+                            "pageNo": "1", "resultType": "json",
+                            "basDt": bas_dt, **extra},
+                    timeout=8.0)
+                logger.info(f"KRX {bas_dt} {extra} → {r.status_code}")
+                if r.status_code != 200:
+                    continue
+                body = r.json().get("response",{}).get("body",{})
+                total = body.get("totalCount", 0)
+                if not total: continue
+                items = body.get("items",{})
+                lst = items.get("item",[]) if isinstance(items, dict) else []
+                if isinstance(lst, dict): lst = [lst]
+                if not lst: continue
+                hit = lst[0]
+                for item in lst:
+                    sc = item.get("srtnCd","").strip()
+                    if code and (sc == code or sc.lstrip("0") == code.lstrip("0")):
+                        hit = item; break
+                    if name and name in (item.get("itmsNm","") + item.get("corpNm","")):
+                        hit = item; break
+                lstg_raw = hit.get("lstgDt","")
+                result = {
+                    "listing_dt": f"{lstg_raw[:4]}.{lstg_raw[4:6]}.{lstg_raw[6:]}" if len(lstg_raw)==8 else lstg_raw,
+                    "mrkt_ctg":   hit.get("mrktCtg",""),
+                    "isin":       hit.get("isinCd",""),
+                    "corp_nm_krx":hit.get("corpNm","") or hit.get("itmsNm",""),
+                    "srtn_cd":    hit.get("srtnCd","").strip(),
+                }
+                logger.info(f"KRX OK: {result}")
+                return result
+            except Exception as e:
+                logger.warning(f"KRX ({bas_dt} {extra}): {e}")
+    logger.warning(f"KRX: no data for code={code} name={name}")
+    return {}
 
 async def _naver_coinfo(code: str, client) -> dict:
     """네이버 증권 coinfo 페이지 한 번에 스크래핑 (기업개요·시총·주식수·외국인비율)"""
