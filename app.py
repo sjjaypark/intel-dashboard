@@ -652,13 +652,42 @@ DART_CORP_MAP: dict[str, tuple[str,str]] = {
     "후성":             ("00595191","093370"),
 }
 
+_CORP_CACHE: dict = {}  # DART corpCode.xml 전체 캐시 (레이지 로드)
+
+async def _load_corp_cache(client) -> dict:
+    global _CORP_CACHE
+    if _CORP_CACHE: return _CORP_CACHE
+    try:
+        logger.info("Downloading DART corpCode.xml ...")
+        r = await client.get("https://opendart.fss.or.kr/api/corpCode.xml",
+            params={"crtfc_key": DART_API_KEY}, timeout=30.0)
+        zf = zipfile.ZipFile(io.BytesIO(r.content))
+        xml_data = zf.read("CORPCODE.xml")
+        root = ET.fromstring(xml_data)
+        for item in root.findall(".//list"):
+            code  = item.findtext("corp_code", "")
+            cname = item.findtext("corp_name", "")
+            stock = (item.findtext("stock_code", "") or "").strip()
+            if code and cname:
+                _CORP_CACHE[cname] = (code, stock)
+        logger.info(f"Corp cache loaded: {len(_CORP_CACHE)} companies")
+    except Exception as e:
+        logger.warning(f"Corp cache load failed: {e}")
+    return _CORP_CACHE
+
 async def _dart_search(name: str, client) -> tuple[str,str]:
     if not DART_API_KEY: return "",""
-    # 1. 사전 매핑 정확 매칭
-    if name in DART_CORP_MAP:
-        return DART_CORP_MAP[name]
+    # 1. 사전 매핑 정확 매칭 (빠름)
+    if name in DART_CORP_MAP: return DART_CORP_MAP[name]
     # 2. 사전 매핑 부분 매칭
     matches = [(k,v) for k,v in DART_CORP_MAP.items() if name in k or k in name]
+    if matches:
+        matches.sort(key=lambda x: len(x[0]))
+        return matches[0][1]
+    # 3. 전체 DART 코드 캐시 (첫 번째 미스 시 다운로드)
+    cache = await _load_corp_cache(client)
+    if name in cache: return cache[name]
+    matches = [(k,v) for k,v in cache.items() if name in k or k in name]
     if matches:
         matches.sort(key=lambda x: len(x[0]))
         return matches[0][1]
@@ -803,15 +832,7 @@ async def _naver_coinfo(code: str, client) -> dict:
                 result["market_cap"] = re.sub(r'\s+', '', val).replace("원", "원")
 
             elif key == "상장주식수":
-                shares_clean = val.replace(",", "")
-                if shares_clean.isdigit():
-                    n = int(shares_clean)
-                    if n >= 100_000_000:
-                        result["issued_shares"] = f"{n/100_000_000:.2f}억주"
-                    elif n >= 10_000:
-                        result["issued_shares"] = f"{n/10_000:.0f}만주"
-                    else:
-                        result["issued_shares"] = f"{n:,}주"
+                result["issued_shares"] = val  # 원본 콤마 숫자 그대로
 
             elif "외국인소진율" in key or "외국인지분율" in key:
                 result["foreign_ratio"] = val  # 이미 "47.58%" 형태
