@@ -162,7 +162,22 @@
     <div id="historyContainer" class="flex flex-wrap gap-1.5 ml-2 pl-2 border-l border-surface-border"></div>
   </div>
 
-  <!-- 상태바 -->
+  <!-- 홈 화면 — 퀵태그 바로 아래 -->
+  <div id="welcomeScreen">
+    <div id="homeSkeleton" class="flex items-center justify-center py-16 text-ink-subtle text-sm gap-2">
+      <svg class="animate-spin w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+      뉴스 로딩 중…
+    </div>
+    <div id="homeContent" class="hidden">
+      <div id="homeTimestamp" class="text-[11px] text-ink-subtle text-right mb-2"></div>
+      <div id="homeSections" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
+    </div>
+  </div>
+
+  <!-- 상태바 (검색 결과용) -->
   <div id="statusBar" class="hidden flex items-center justify-between mb-3 px-1">
     <div class="flex items-center gap-2">
       <span class="text-sm font-bold text-ink" id="statusQuery"></span>
@@ -185,7 +200,7 @@
   </div>
 
   <!-- ══ 3-column 레이아웃 ══ -->
-  <div id="mainGrid" class="hidden grid gap-4 grid-cols-1 sm:grid-cols-[1fr_1fr_290px]"
+  <div id="mainGrid" class="hidden grid gap-4 grid-cols-1 sm:grid-cols-[1fr_1fr_290px]">
 
     <!-- 뉴스 -->
     <div>
@@ -267,22 +282,6 @@
     <div class="bg-white rounded-xl border border-surface-border h-64 skeleton"></div>
   </div>
 
-  <!-- 홈 화면 -->
-  <div id="welcomeScreen">
-    <!-- 로딩 인디케이터 -->
-    <div id="homeSkeleton" class="flex items-center justify-center py-16 text-ink-subtle text-sm gap-2">
-      <svg class="animate-spin w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-      </svg>
-      뉴스 로딩 중…
-    </div>
-    <!-- 로드된 콘텐츠 -->
-    <div id="homeContent" class="hidden">
-      <div id="homeTimestamp" class="text-[11px] text-ink-subtle text-right mb-2"></div>
-      <div id="homeSections" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
-    </div>
-  </div>
 </main>
 
 <!-- 토스트 알림 -->
