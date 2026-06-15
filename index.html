@@ -581,6 +581,10 @@ function renderCompanyOverview(d) {
       <span class="text-sm font-bold text-ink">${esc(sd[k]||'-')}</span>
     </div>`).join('');
 
+  // 주주현황 합계 계산
+  const totalRatio = sh.reduce((sum, s) => sum + (parseFloat(s.ratio) || 0), 0);
+  const totalRatioStr = sh.length ? totalRatio.toFixed(2) : null;
+
   // 주주현황 테이블 (collapsible)
   const holdersTable = sh.length ? `
     <table class="w-full text-xs">
@@ -597,6 +601,10 @@ function renderCompanyOverview(d) {
           <td class="px-3 py-1.5 text-right font-mono text-ink">${esc(s.shares)}</td>
           <td class="px-3 py-1.5 text-right font-semibold text-primary">${esc(s.ratio)}%</td>
         </tr>`).join('')}
+        <tr class="border-t-2 border-surface-border bg-surface-muted/50 font-bold">
+          <td class="px-3 py-1.5 text-ink" colspan="3">합계</td>
+          <td class="px-3 py-1.5 text-right text-primary">${totalRatioStr}%</td>
+        </tr>
       </tbody>
     </table>` : `<div class="px-4 py-4 text-center text-xs text-ink-subtle">주주 데이터 없음</div>`;
 
@@ -654,6 +662,7 @@ function renderCompanyOverview(d) {
               ${!hasDart ? `<span class="text-[10px] bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded border border-amber-400/30">DART 미연동</span>` : ''}
             </div>
             ${d.desc ? `<p class="text-xs text-white/70 leading-relaxed max-w-2xl">${esc(d.desc)}</p>` : ''}
+            ${totalRatioStr ? `<p class="text-xs text-white/50 mt-1">최대주주 합계 <span class="text-white/80 font-semibold">${totalRatioStr}%</span></p>` : ''}
           </div>
           ${sd.price ? `
           <div class="text-right flex-shrink-0">
