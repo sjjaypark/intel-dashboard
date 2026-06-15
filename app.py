@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 NAVER_CLIENT_ID     = os.getenv("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
 KRX_API_KEY         = os.getenv("KRX_API_KEY", "")
+SARAMIN_API_KEY     = os.getenv("SARAMIN_API_KEY", "")   # 사람인 API (미연동 시 공란)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -4689,6 +4690,61 @@ DART_CORP_MAP: dict[str, tuple[str,str]] = {
     '히든챔피언제1호기업인수목적': ('00804983', '123160'),
     '힘스': ('00556712', '238490')
 }
+# ══════════════════════════════════════════════════════════════════════════════
+#  비상장사 DB  (이름 → {corp_code, desc, industry, founded, website, tags})
+#  corp_code: DART 등록된 경우 실제 코드 (재무공시 조회 가능)
+#  stock_code가 없으면 주가/시총 데이터는 자동으로 공란 처리됨
+# ══════════════════════════════════════════════════════════════════════════════
+UNLISTED_COMPANIES: dict[str, dict] = {
+    # ── 대기업 계열 비상장 ─────────────────────────────────────────────────────
+    "삼성바이오에피스":   {"corp_code":"01421014","desc":"삼성바이오로직스 자회사, 바이오시밀러 개발·판매","industry":"바이오","tags":["바이오","바이오시밀러","삼성"]},
+    "삼성디스플레이":     {"corp_code":"01334155","desc":"삼성 OLED·QD 디스플레이 제조","industry":"디스플레이","tags":["디스플레이","OLED","삼성"]},
+    "삼성물산건설부문":   {"corp_code":"","desc":"삼성물산 건설 계열","industry":"건설","tags":["건설","삼성"]},
+    "SK온":               {"corp_code":"01610658","desc":"SK이노베이션 배터리 자회사, 전기차 배터리 셀 제조","industry":"배터리","tags":["배터리","2차전지","전기차","SK"]},
+    "SK실트론":           {"corp_code":"00422463","desc":"반도체 웨이퍼 제조 (SK 계열)","industry":"반도체","tags":["반도체","웨이퍼","SK"]},
+    "SK스퀘어":           {"corp_code":"","desc":"SK ICT 투자 지주회사","industry":"IT","tags":["IT","투자","SK"]},
+    "LG에너지솔루션헝가리": {"corp_code":"","desc":"LG에너지솔루션 유럽 생산 법인","industry":"배터리","tags":["배터리","LG"]},
+    "현대글로비스":       {"corp_code":"","desc":"현대자동차그룹 물류·유통 계열사 (코스피 상장)","industry":"물류","tags":["물류","현대"]},
+    "현대오일뱅크":       {"corp_code":"00165860","desc":"현대중공업그룹 정유 계열사","industry":"정유","tags":["정유","에너지","현대"]},
+    "HD현대건설기계":     {"corp_code":"","desc":"HD현대 건설기계 부문","industry":"건설기계","tags":["건설기계","현대"]},
+    "롯데케미칼타이탄":   {"corp_code":"","desc":"롯데케미칼 말레이시아 석유화학 법인","industry":"화학","tags":["화학","롯데"]},
+    # ── AI / 테크 비상장 ──────────────────────────────────────────────────────
+    "뤼튼테크놀로지":     {"corp_code":"","desc":"생성형 AI 플랫폼 뤼튼(wrtn) 운영, 국내 AI 스타트업","industry":"AI","tags":["AI","생성형AI","스타트업"]},
+    "업스테이지":         {"corp_code":"","desc":"LLM Solar 개발사, 카카오 공동창업자 출신","industry":"AI","tags":["AI","LLM","스타트업"]},
+    "코어닷투데이":       {"corp_code":"","desc":"금융 AI·데이터 분석 플랫폼","industry":"AI","tags":["AI","핀테크"]},
+    "카카오엔터프라이즈": {"corp_code":"01700791","desc":"카카오 B2B AI·클라우드 서비스 계열사","industry":"AI","tags":["AI","클라우드","카카오"]},
+    "네이버클라우드":     {"corp_code":"","desc":"NAVER 클라우드 플랫폼(NCP) 운영사","industry":"클라우드","tags":["클라우드","AI","NAVER"]},
+    "토스":               {"corp_code":"","desc":"비바리퍼블리카 운영 핀테크 슈퍼앱, 토스뱅크·증권 포함","industry":"핀테크","tags":["핀테크","뱅킹","스타트업"]},
+    "비바리퍼블리카":     {"corp_code":"01378461","desc":"토스 운영사, 국내 대표 핀테크 유니콘","industry":"핀테크","tags":["핀테크","토스","스타트업"]},
+    "당근마켓":           {"corp_code":"","desc":"지역 기반 중고거래 플랫폼","industry":"플랫폼","tags":["플랫폼","커머스","스타트업"]},
+    "컬리":               {"corp_code":"01578455","desc":"마켓컬리 운영사, 새벽배송 이커머스","industry":"이커머스","tags":["이커머스","물류","스타트업"]},
+    "무신사":             {"corp_code":"","desc":"패션 이커머스 플랫폼, 국내 최대 패션 플랫폼","industry":"이커머스","tags":["이커머스","패션","스타트업"]},
+    "야놀자":             {"corp_code":"","desc":"여행·숙박 플랫폼, 유니콘 기업","industry":"플랫폼","tags":["플랫폼","여행","스타트업"]},
+    "오늘의집":           {"corp_code":"","desc":"인테리어 커머스 플랫폼 버킷플레이스 운영","industry":"플랫폼","tags":["플랫폼","인테리어","스타트업"]},
+    "쏘카":               {"corp_code":"","desc":"카셰어링 플랫폼 (코스닥 상장)","industry":"모빌리티","tags":["모빌리티","플랫폼"]},
+    # ── 바이오 비상장 ─────────────────────────────────────────────────────────
+    "보령제약":           {"corp_code":"00421485","desc":"국내 제약사, 고혈압 치료제 카나브 보유","industry":"제약","tags":["제약","바이오"]},
+    "동아에스티":         {"corp_code":"","desc":"동아쏘시오그룹 전문의약품 계열사 (코스피 상장)","industry":"제약","tags":["제약","바이오"]},
+    "녹십자":             {"corp_code":"00431975","desc":"혈액제제·백신 제조 국내 대형 제약사","industry":"바이오","tags":["바이오","백신","혈액제제"]},
+    "일동제약":           {"corp_code":"","desc":"당뇨·소화기 치료제 전문 제약사","industry":"제약","tags":["제약"]},
+    "종근당":             {"corp_code":"","desc":"항생제·만성질환 치료제 전문 제약사 (코스피 상장)","industry":"제약","tags":["제약","바이오"]},
+    # ── 금융 비상장 ───────────────────────────────────────────────────────────
+    "NICE신용평가":       {"corp_code":"00672468","desc":"기업·채권 신용등급 평가사, NICE그룹 계열","industry":"금융","tags":["신용평가","금융","NICE"]},
+    "한국기업평가":       {"corp_code":"00305025","desc":"Fitch 계열 신용평가사, KIS 등급 발행","industry":"금융","tags":["신용평가","금융"]},
+    "한국신용평가":       {"corp_code":"00149239","desc":"Moody's 계열 신용평가사, KR 등급 발행","industry":"금융","tags":["신용평가","금융"]},
+    "카카오뱅크비즈":     {"corp_code":"","desc":"카카오뱅크 B2B 서비스 법인","industry":"금융","tags":["핀테크","뱅킹","카카오"]},
+    "토스뱅크":           {"corp_code":"","desc":"비바리퍼블리카 100% 자회사 인터넷전문은행","industry":"금융","tags":["핀테크","뱅킹","토스"]},
+    "케이뱅크":           {"corp_code":"01629175","desc":"국내 최초 인터넷전문은행","industry":"금융","tags":["핀테크","뱅킹"]},
+    # ── 방산 / 우주 비상장 ───────────────────────────────────────────────────
+    "한화디펜스":         {"corp_code":"00159778","desc":"한화그룹 방산 계열, K9 자주포·레드백 IFV 제조","industry":"방산","tags":["방산","K방산","한화"]},
+    "풍산홀딩스":         {"corp_code":"","desc":"탄약·동 소재 제조 방산기업 (코스피 상장)","industry":"방산","tags":["방산","소재"]},
+    "이노스페이스":       {"corp_code":"","desc":"소형 액체로켓 발사체 스타트업 (코스닥 상장)","industry":"우주","tags":["우주","발사체"]},
+    # ── 에너지 비상장 ────────────────────────────────────────────────────────
+    "SK어스온":           {"corp_code":"","desc":"SK이노베이션 E&P(석유개발) 자회사","industry":"에너지","tags":["에너지","석유","SK"]},
+    "GS에너지":           {"corp_code":"01070106","desc":"GS그룹 에너지 중간지주사","industry":"에너지","tags":["에너지","GS"]},
+    "한국가스공사자회사": {"corp_code":"","desc":"한국가스공사 LNG·수소 관련 자회사","industry":"에너지","tags":["LNG","수소","에너지"]},
+}
+
 _CORP_CACHE: dict = {}  # DART corpCode.xml 전체 캐시 (레이지 로드)
 
 async def _load_corp_cache(client) -> dict:
@@ -4834,6 +4890,78 @@ async def _search_holders_web(company: str, client) -> list:
     except Exception as e:
         logger.warning(f"Web holders search: {e}")
         return []
+
+async def _saramin_company(name: str, client) -> dict:
+    """사람인 기업정보 API — API 키 발급 후 활성화됨"""
+    if not SARAMIN_API_KEY:
+        return {}
+    try:
+        r = await client.get(
+            "https://oapi.saramin.co.kr/company-info",
+            params={"access-key": SARAMIN_API_KEY, "company_nm": name, "count": 1},
+            headers={"Accept": "application/json"},
+            timeout=6.0,
+        )
+        if not r.is_success:
+            return {}
+        data = r.json()
+        companies = data.get("companies", {}).get("company", [])
+        if not companies:
+            return {}
+        c = companies[0] if isinstance(companies, list) else companies
+        return {
+            "saramin_id":    c.get("company_id", ""),
+            "industry":      c.get("industry_name", ""),
+            "employee_cnt":  c.get("emp_cnt", ""),
+            "founded":       c.get("est_date", ""),
+            "homepage":      c.get("homepage", ""),
+            "address":       c.get("addr1", ""),
+            "ceo":           c.get("ceo_nm", ""),
+            "revenue":       c.get("sales_amt", ""),       # 매출액 (단위: 백만원)
+            "capital":       c.get("capital", ""),          # 자본금
+            "biz_no":        c.get("biz_no", ""),
+        }
+    except Exception as e:
+        logger.warning(f"Saramin API: {e}")
+        return {}
+
+
+async def _web_company_basic(name: str, client) -> dict:
+    """네이버 기업검색으로 비상장사 기본정보 수집 (사람인 API 없을 때 fallback)"""
+    result: dict = {}
+    try:
+        q = quote(f"{name} 기업정보 대표이사 설립일 직원수 매출")
+        r = await client.get(
+            f"https://search.naver.com/search.naver?where=web&query={q}",
+            headers=HEADERS, timeout=8.0,
+        )
+        soup = BeautifulSoup(r.content, "html.parser")
+        text = soup.get_text(" ", strip=True)
+
+        # 대표이사 패턴
+        m = re.search(r'대표(?:이사|자)[\s:：]*([가-힣A-Za-z]{2,10})', text)
+        if m: result["ceo"] = m.group(1)
+
+        # 설립일 패턴
+        m = re.search(r'설립(?:일)?[\s:：]*(\d{4}[.\-년]\s*\d{1,2}[.\-월]?\s*\d{0,2}[일]?)', text)
+        if m: result["founded"] = m.group(1).strip()
+
+        # 직원수 패턴
+        m = re.search(r'(?:직원|임직원)\s*(?:수)?\s*[\s:：]*(\d[\d,]+)\s*(?:명|인)', text)
+        if m: result["employee_cnt"] = m.group(1).replace(",","")
+
+        # 매출 패턴
+        m = re.search(r'매출(?:액)?\s*[\s:：]*(\d[\d,]+)\s*(억|조|백만)', text)
+        if m: result["revenue_str"] = m.group(1) + m.group(2)
+
+        # 홈페이지 패턴
+        m = re.search(r'(?:홈페이지|homepage|www\.)[:\s]*([a-z0-9\-\.]+\.[a-z]{2,})', text, re.I)
+        if m: result["homepage"] = m.group(1)
+
+    except Exception as e:
+        logger.warning(f"Web company basic: {e}")
+    return result
+
 
 async def _krx_info(code: str, name: str, client) -> dict:
     """금융위원회 KRX 상장종목정보 API — 시장구분(KOSPI/KOSDAQ)·ISIN 제공
@@ -5042,12 +5170,26 @@ async def get_stocks(codes: str = Query(...)):
 async def get_company(q: str = Query(..., min_length=1)):
     logger.info(f"=== Company: '{q}' ===")
     cur = datetime.now().year
+
+    # 비상장사 여부 판단 (UNLISTED_COMPANIES에 있으면 비상장으로 처리)
+    unlisted_info = UNLISTED_COMPANIES.get(q)
+    # 이름 부분 매칭도 시도
+    if not unlisted_info:
+        for uname, udata in UNLISTED_COMPANIES.items():
+            if q == uname or (len(q) >= 2 and (q in uname or uname in q)):
+                unlisted_info = udata; break
+
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        # DART 코드 검색
-        corp_code, dart_sc = await _dart_search(q, client)
-        # 종목코드: DART → COMPANY_INFO 순으로 확보
+        # DART 코드 검색 (비상장사도 DART corp_code 있으면 재무 조회 가능)
+        if unlisted_info and unlisted_info.get("corp_code"):
+            corp_code = unlisted_info["corp_code"]
+            dart_sc   = ""  # 비상장 = 종목코드 없음
+        else:
+            corp_code, dart_sc = await _dart_search(q, client)
+
+        # 종목코드: DART → COMPANY_INFO 순으로 확보 (상장사만)
         stock_code = dart_sc
-        if not stock_code:
+        if not stock_code and not unlisted_info:
             for n, info in COMPANY_INFO.items():
                 if q == n or (len(q) > 1 and q in n):
                     stock_code = info.get("code",""); break
@@ -5059,12 +5201,14 @@ async def get_company(q: str = Query(..., min_length=1)):
         q_labels = [f"{y}/{'3Q' if r=='11014' else '2Q' if r=='11013' else '1Q'}"
                     for y,r in q_specs]
 
+        # 병렬 조회 — 비상장사면 stock_code가 없어서 주가/KRX 데이터는 자동으로 공란
         results = await asyncio.gather(
             _dart_info(corp_code, client),
             _dart_holders(corp_code, cur-1, client),
-            _naver_metrics(stock_code, client),
-            _naver_coinfo(stock_code, client),           # 기업개요+시총+주식수+외국인
-            _krx_info(stock_code, q, client),            # 상장일·시장구분·ISIN
+            _naver_metrics(stock_code, client),          # stock_code 없으면 즉시 {}
+            _naver_coinfo(stock_code, client),           # stock_code 없으면 즉시 {}
+            _krx_info(stock_code, q, client),            # stock_code 없으면 이름 검색
+            _saramin_company(q, client),                 # 사람인 API (미설정 시 {})
             *[_dart_fs(corp_code, y, "11011", client) for y in annual_years],
             *[_dart_fs(corp_code, y, r,       client) for y,r in q_specs],
             return_exceptions=True,
@@ -5075,11 +5219,15 @@ async def get_company(q: str = Query(..., min_length=1)):
         stock_data   = results[2] if isinstance(results[2], dict) else {}
         naver_ci     = results[3] if isinstance(results[3], dict) else {}
         krx_data     = results[4] if isinstance(results[4], dict) else {}
+        saramin_data = results[5] if isinstance(results[5], dict) else {}
+        raw_ann      = results[6:6+len(annual_years)]
+        raw_qtr      = results[6+len(annual_years):]
 
-        # 네이버 코인포에서 시가총액·주식수·외국인비율
+        # 주가 관련 (상장사만 유효)
         stock_data["market_cap"]    = naver_ci.get("market_cap","")
         stock_data["issued_shares"] = naver_ci.get("issued_shares","")
         stock_data["foreign_ratio"] = naver_ci.get("foreign_ratio","")
+
         # KRX에서 상장일·시장구분 보완
         if krx_data.get("listing_dt"):
             corp_info["listing_dt"] = krx_data["listing_dt"]
@@ -5087,21 +5235,53 @@ async def get_company(q: str = Query(..., min_length=1)):
             corp_info["corp_cls"] = krx_data["mrkt_ctg"]
         if krx_data.get("isin"):
             corp_info["isin"] = krx_data["isin"]
-        # stock_code가 없으면 KRX에서 보완
         if not stock_code and krx_data.get("srtn_cd"):
             stock_code = krx_data["srtn_cd"]
+
         # 사업정보
-        biz_info = {"overview": naver_ci.get("overview",""),
-                    "products": naver_ci.get("products",[]),
-                    "segments": naver_ci.get("segments",[])}
+        biz_info = {
+            "overview":  naver_ci.get("overview",""),
+            "products":  naver_ci.get("products",[]),
+            "segments":  naver_ci.get("segments",[]),
+        }
+
+        # 비상장사 추가정보 수집 (DART/Naver에서 못 채운 필드 보완)
+        extra_info: dict = {}
+        if unlisted_info:
+            extra_info["industry"]     = unlisted_info.get("industry","")
+            extra_info["is_unlisted"]  = True
+            # 사람인 API 데이터 우선 병합
+            if saramin_data:
+                extra_info.update({
+                    "ceo":          saramin_data.get("ceo","") or corp_info.get("ceo_nm",""),
+                    "employee_cnt": saramin_data.get("employee_cnt",""),
+                    "founded":      saramin_data.get("founded","") or corp_info.get("est_dt",""),
+                    "homepage":     saramin_data.get("homepage",""),
+                    "address":      saramin_data.get("address",""),
+                    "revenue":      saramin_data.get("revenue",""),
+                    "capital":      saramin_data.get("capital",""),
+                    "biz_no":       saramin_data.get("biz_no",""),
+                })
+            else:
+                # 사람인 없으면 웹 검색 fallback
+                web_basic = await _web_company_basic(q, client)
+                extra_info.update({
+                    "ceo":          web_basic.get("ceo","") or corp_info.get("ceo_nm",""),
+                    "employee_cnt": web_basic.get("employee_cnt",""),
+                    "founded":      web_basic.get("founded","") or corp_info.get("est_dt",""),
+                    "homepage":     web_basic.get("homepage",""),
+                    "revenue_str":  web_basic.get("revenue_str",""),
+                })
+        elif saramin_data:
+            # 상장사도 사람인 데이터 있으면 보완
+            extra_info["employee_cnt"] = saramin_data.get("employee_cnt","")
+            extra_info["homepage"]     = saramin_data.get("homepage","")
 
         # 주주: DART 우선, 없으면 웹 검색 fallback
         if dart_holders:
             holders = dart_holders
         else:
             holders = await _search_holders_web(q, client)
-        raw_ann = results[5:5+len(annual_years)]
-        raw_qtr = results[5+len(annual_years):]
 
         # 연간 재무 파싱
         annual_fs = []
@@ -5117,54 +5297,77 @@ async def get_company(q: str = Query(..., min_length=1)):
                 row = _build_row(items)
                 quarter_fs.append({"period":label, **{k:_fmt_won(v) for k,v in row.items()}})
 
-        # COMPANY_INFO 설명 보완
+        # desc: UNLISTED_COMPANIES → COMPANY_INFO → DART corp_info 순으로
         desc_from_db = ""
-        for n, info in COMPANY_INFO.items():
-            if q == n or (corp_info.get("corp_name") and corp_info["corp_name"] == n):
-                desc_from_db = info.get("desc",""); break
+        if unlisted_info:
+            desc_from_db = unlisted_info.get("desc","")
+        if not desc_from_db:
+            for n, info in COMPANY_INFO.items():
+                if q == n or (corp_info.get("corp_name") and corp_info["corp_name"] == n):
+                    desc_from_db = info.get("desc",""); break
 
         return JSONResponse({
-            "query":       q,
-            "has_dart":    bool(corp_code and DART_API_KEY),
-            "corp_code":   corp_code,
-            "corp_info":   corp_info,
-            "desc":        desc_from_db,
-            "stock_code":  stock_code,
-            "stock_data":  stock_data,
-            "annual_fs":   annual_fs,
-            "quarter_fs":  quarter_fs,
-            "shareholders":holders,
-            "biz_info":    biz_info,
+            "query":        q,
+            "has_dart":     bool(corp_code and DART_API_KEY),
+            "is_unlisted":  bool(unlisted_info),
+            "corp_code":    corp_code,
+            "corp_info":    corp_info,
+            "desc":         desc_from_db,
+            "stock_code":   stock_code,
+            "stock_data":   stock_data,
+            "annual_fs":    annual_fs,
+            "quarter_fs":   quarter_fs,
+            "shareholders": holders,
+            "biz_info":     biz_info,
+            "extra_info":   extra_info,   # 비상장사 추가정보 (사람인·웹 수집)
         })
 
 @app.get("/api/suggest")
 async def suggest(q: str = Query(..., min_length=1)):
-    """회사 이름 자동완성 — DART_CORP_MAP + COMPANY_INFO 에서 즉시 검색"""
+    """회사 이름 자동완성 — DART_CORP_MAP + COMPANY_INFO + UNLISTED_COMPANIES"""
     q_lower = q.strip()
-    # 1. DART_CORP_MAP 에서 부분 매칭
     results: list[dict] = []
     seen: set[str] = set()
-    for name, (corp_code, stock_code) in DART_CORP_MAP.items():
-        if q_lower in name or name.startswith(q_lower):
-            if name not in seen:
-                seen.add(name)
-                info = COMPANY_INFO.get(name, {})
-                results.append({
-                    "name": name,
-                    "code": stock_code,
-                    "desc": info.get("desc",""),
-                })
-    # 2. COMPANY_INFO 에서 추가 (DART_CORP_MAP 에 없는 것)
+
+    # 1. COMPANY_INFO (상장 주요기업, 태그·설명 보유 → 우선 노출)
     for name, info in COMPANY_INFO.items():
+        if q_lower in name or name.startswith(q_lower):
+            seen.add(name)
+            results.append({
+                "name":        name,
+                "code":        info.get("code",""),
+                "desc":        info.get("desc",""),
+                "is_unlisted": False,
+            })
+
+    # 2. UNLISTED_COMPANIES (비상장사)
+    for name, info in UNLISTED_COMPANIES.items():
         if name not in seen and (q_lower in name or name.startswith(q_lower)):
             seen.add(name)
             results.append({
-                "name": name,
-                "code": info.get("code",""),
-                "desc": info.get("desc",""),
+                "name":        name,
+                "code":        "",
+                "desc":        info.get("desc",""),
+                "is_unlisted": True,
+                "industry":    info.get("industry",""),
             })
-    # 이름 길이 오름차순 (더 짧은 / 더 정확한 매칭 우선)
-    results.sort(key=lambda x: len(x["name"]))
+
+    # 3. DART_CORP_MAP (전체 상장사 3,936개 — 위에서 못 찾은 것 보완)
+    for name, (corp_code, stock_code) in DART_CORP_MAP.items():
+        if name not in seen and (q_lower in name or name.startswith(q_lower)):
+            seen.add(name)
+            results.append({
+                "name":        name,
+                "code":        stock_code,
+                "desc":        "",
+                "is_unlisted": False,
+            })
+
+    results.sort(key=lambda x: (
+        0 if x["name"] == q_lower else        # 완전 일치 최우선
+        1 if x["name"].startswith(q_lower) else  # 시작 일치
+        2                                         # 포함 일치
+    ))
     return JSONResponse({"suggestions": results[:15]})
 
 _home_cache: dict = {"payload": None, "ts": 0.0}

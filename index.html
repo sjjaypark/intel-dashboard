@@ -489,8 +489,11 @@ async function onSearchInput() {
         return `<div class="suggest-item flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-surface-muted border-b border-surface-border last:border-0"
              onmousedown="selectSuggest(${JSON.stringify(s.name)})">
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold text-ink">${nameHtml}</div>
-            ${s.desc ? `<div class="text-xs text-ink-subtle truncate">${esc(s.desc)}</div>` : ''}
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm font-semibold text-ink">${nameHtml}</span>
+              ${s.is_unlisted ? `<span class="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded font-medium shrink-0">비상장</span>` : ''}
+            </div>
+            ${s.desc ? `<div class="text-xs text-ink-subtle truncate">${esc(s.desc)}</div>` : (s.industry ? `<div class="text-xs text-ink-subtle">${esc(s.industry)}</div>` : '')}
           </div>
           ${s.code ? `<span class="text-xs font-mono text-ink-subtle shrink-0">${esc(s.code)}</span>` : ''}
         </div>`;
@@ -534,7 +537,7 @@ async function runSearch() {
     try {
       const cData = await fetch(`${API}/api/company?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():null);
       $('searchBtn').disabled = false;
-      if (cData && (cData.corp_info?.corp_name || cData.stock_code || cData.stock_data?.price)) {
+      if (cData && (cData.corp_info?.corp_name || cData.stock_code || cData.desc || cData.is_unlisted)) {
         renderCompanyOverview(cData);
       } else {
         $('emptyMsg').textContent = `"${q}" 회사 정보를 찾을 수 없습니다.`;
@@ -600,29 +603,48 @@ const BS_KEYS = ['total_assets','current_assets','non_current_assets','tangible_
 const INVEST_KEYS = ['PER','PBR','EPS','BPS','ROE','ROA','DIV'];
 
 function renderCompanyOverview(d) {
-  const ci = d.corp_info || {};
+  const ci = d.corp_info  || {};
   const sd = d.stock_data || {};
   const af = d.annual_fs  || [];
   const qf = d.quarter_fs || [];
   const sh = d.shareholders || [];
-  const bi = d.biz_info    || {};
-  const hasDart = d.has_dart;
+  const bi = d.biz_info   || {};
+  const ex = d.extra_info || {};   // 비상장사 추가정보
+  const hasDart    = d.has_dart;
+  const isUnlisted = d.is_unlisted;
 
-  const priceColor = sd.up ? 'text-red-500' : 'text-blue-600';
-  const arrow      = sd.up ? '▲' : '▼';
+  const arrow = sd.up ? '▲' : '▼';
 
-  // 기본정보 그리드
-  const infoItems = [
-    ['대표이사',     ci.ceo_nm    || '-'],
-    ['설립일',       ci.est_dt    || '-'],
+  // 대표이사: DART corp_info → extra_info 순으로
+  const ceoName  = ci.ceo_nm   || ex.ceo      || '-';
+  const estDate  = ci.est_dt   || ex.founded   || '-';
+  const homepage = ci.hm_url   || ex.homepage  || '';
+  const address  = ci.adres    || ex.address   || '-';
+  const phone    = ci.phn_no   || '-';
+
+  // 기본정보 그리드 — 비상장사는 상장시장·시총·외국인 대신 산업·직원수 표시
+  const infoItems = isUnlisted ? [
+    ['대표이사',   ceoName],
+    ['설립일',     estDate],
+    ['산업',       ex.industry || ci.induty_code || '-'],
+    ['직원수',     ex.employee_cnt ? `${ex.employee_cnt}명` : '-'],
+    ['결산월',     ci.acc_mt ? `${ci.acc_mt}월` : '-'],
+    ['소재지',     address],
+    ['홈페이지',   homepage ? `<a href="${homepage.startsWith('http')?'':'https://'}${esc(homepage)}" target="_blank" class="text-primary hover:underline truncate">${esc(homepage)}</a>` : '-'],
+    ['전화',       phone],
+    ['매출(추정)', ex.revenue ? `${ex.revenue}백만원` : (ex.revenue_str || '-')],
+    ['사업자번호', ex.biz_no  || '-'],
+  ] : [
+    ['대표이사',     ceoName],
+    ['설립일',       estDate],
     ['상장시장',     ci.corp_cls  || '-'],
     ['시가총액',     sd.market_cap|| '-'],
     ['발행주식수',   sd.issued_shares || '-'],
     ['외국인 비율',  sd.foreign_ratio || '-'],
     ['결산월',       ci.acc_mt ? `${ci.acc_mt}월` : '-'],
-    ['소재지',       ci.adres    || '-'],
-    ['홈페이지',     ci.hm_url   ? `<a href="${esc(ci.hm_url)}" target="_blank" class="text-primary hover:underline truncate">${esc(ci.hm_url)}</a>` : '-'],
-    ['전화',         ci.phn_no   || '-'],
+    ['소재지',       address],
+    ['홈페이지',     homepage ? `<a href="${esc(homepage)}" target="_blank" class="text-primary hover:underline truncate">${esc(homepage)}</a>` : '-'],
+    ['전화',         phone],
   ];
 
   const infoGrid = infoItems.map(([k,v])=>`
@@ -753,7 +775,9 @@ function renderCompanyOverview(d) {
               <h2 class="text-base sm:text-lg font-bold">${esc(ci.corp_name || d.query)}</h2>
               ${ci.corp_name_eng ? `<span class="text-xs text-white/60">${esc(ci.corp_name_eng)}</span>` : ''}
               ${d.stock_code ? `<span class="text-xs bg-white/10 px-2 py-0.5 rounded font-mono">${esc(d.stock_code)}</span>` : ''}
-              ${!hasDart ? `<span class="text-[10px] bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded border border-amber-400/30">DART 미연동</span>` : ''}
+              ${isUnlisted ? `<span class="text-[10px] bg-purple-400/20 text-purple-200 px-2 py-0.5 rounded border border-purple-400/30">비상장</span>` : ''}
+              ${!hasDart && !isUnlisted ? `<span class="text-[10px] bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded border border-amber-400/30">DART 미연동</span>` : ''}
+              ${hasDart && isUnlisted ? `<span class="text-[10px] bg-green-400/20 text-green-200 px-2 py-0.5 rounded border border-green-400/30">DART 공시</span>` : ''}
             </div>
             ${d.desc ? `<p class="text-xs text-white/70 leading-relaxed">${esc(d.desc)}</p>` : ''}
             ${totalRatioStr ? `<p class="text-xs text-white/50 mt-1">최대주주 합계 <span class="text-white/80 font-semibold">${totalRatioStr}%</span></p>` : ''}
@@ -763,6 +787,10 @@ function renderCompanyOverview(d) {
             <div class="text-xl sm:text-2xl font-bold ${sd.up?'text-red-300':'text-blue-300'}">${esc(sd.price)}</div>
             <div class="text-xs ${sd.up?'text-red-300':'text-blue-300'}">${arrow} ${esc(sd.diff)} (${esc(sd.ratio)})</div>
             ${sd.market_cap ? `<div class="text-xs text-white/50 sm:mt-0.5 hidden sm:block">시총 ${esc(sd.market_cap)}</div>` : ''}
+          </div>` : isUnlisted ? `
+          <div class="sm:flex-shrink-0 text-right hidden sm:block">
+            <div class="text-xs text-white/40">비상장사</div>
+            <div class="text-xs text-white/30 mt-0.5">주가 정보 없음</div>
           </div>` : ''}
         </div>
       </div>
@@ -851,7 +879,7 @@ function renderFsTable() {
   if (!el) return;
   const displayKeys = section==='IS' ? IS_KEYS : BS_KEYS;
   if (!rows || !rows.length) {
-    el.innerHTML = `<div class="px-5 py-6 text-center text-xs text-ink-subtle">데이터 없음 — DART 사업보고서 미제출 또는 API 키 미설정</div>`;
+    el.innerHTML = `<div class="px-5 py-6 text-center text-xs text-ink-subtle">재무 데이터 없음 — DART 사업보고서 미제출이거나 비공시 기업입니다</div>`;
     return;
   }
   const periods = rows.map(r=>r.period);
