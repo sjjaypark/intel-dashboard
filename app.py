@@ -4875,7 +4875,10 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 @app.get("/")
-async def root(): return FileResponse("index.html")
+async def root():
+    r = FileResponse("index.html")
+    r.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return r
 
 @app.get("/api/search")
 async def search(q: str = Query(..., min_length=1)):

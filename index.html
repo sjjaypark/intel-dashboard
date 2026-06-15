@@ -467,7 +467,7 @@ function renderHistory() {
     ).join('');
 }
 
-function searchTag(q) { $('searchInput').value=q; runSearch(); }
+function searchTag(q) { $('searchInput').value=q; setSearchMode('news'); runSearch(); }
 
 // ── 자동완성 ──────────────────────────────────────────────────────────────────
 let _suggestTimer = null;
@@ -969,7 +969,7 @@ function renderResults(data) {
   $('statusCount').textContent = `뉴스 ${news.length} · 블로그 ${blog.length}`;
   $('statusTime').textContent  = timestamp ? `${timestamp} 기준` : '';
 
-  $('mainGrid').style.display = '';
+  $('mainGrid').style.display = 'grid';
   $('suggestCard').classList.remove('hidden');
 
   _newsAll = news; _blogAll = blog;
