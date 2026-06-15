@@ -370,11 +370,11 @@ def extract_companies_from_all(items: list, query: str) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 #  NEWS
 # ══════════════════════════════════════════════════════════════════════════════
-async def news_google_rss(query: str, client: httpx.AsyncClient, limit=60) -> list:
+async def news_google_rss(query: str, client: httpx.AsyncClient, limit=60, translate=True) -> list:
     expanded = expand_query(query)
     url = f"https://news.google.com/rss/search?q={quote(expanded)}&hl=ko&gl=KR&ceid=KR:ko"
     try:
-        r = await client.get(url, headers=HEADERS, timeout=12.0)
+        r = await client.get(url, headers=HEADERS, timeout=10.0)
         root  = ET.fromstring(r.content)
         items = root.findall(".//item")[:limit]
         logger.info(f"Google news RSS: {len(items)}")
@@ -391,11 +391,11 @@ async def news_google_rss(query: str, client: httpx.AsyncClient, limit=60) -> li
         source = src_el.text if src_el is not None and src_el.text else domain_of(link)
         results.append(make_item(title, link, desc, source, pub, "news"))
 
-    # 영문 제목 번역
-    trans_tasks = [translate_ko(it["title"], client) for it in results]
-    translated  = await asyncio.gather(*trans_tasks, return_exceptions=True)
-    for item, t in zip(results, translated):
-        if isinstance(t, str) and t: item["title"] = t
+    if translate:
+        trans_tasks = [translate_ko(it["title"], client) for it in results]
+        translated  = await asyncio.gather(*trans_tasks, return_exceptions=True)
+        for item, t in zip(results, translated):
+            if isinstance(t, str) and t: item["title"] = t
     return results
 
 async def news_naver_api(query: str, client: httpx.AsyncClient) -> list:
@@ -5056,7 +5056,7 @@ async def get_home():
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         results = await asyncio.gather(
-            *[news_google_rss(label, client, limit=10) for label in ALL],
+            *[news_google_rss(label, client, limit=10, translate=False) for label in ALL],
             return_exceptions=True,
         )
 
