@@ -5071,6 +5071,7 @@ async def get_home():
     for label, items in zip(ALL, results):
         if isinstance(items, Exception) or not items:
             items = []
+        items = sort_by_date(items)  # 최신순 정렬
         for it in items:
             it.pop("_dt", None)
         t = "keyword" if label in KEYWORDS else "company"
