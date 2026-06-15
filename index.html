@@ -415,7 +415,10 @@ async function loadHomeData() {
 
     $('homeContent').classList.remove('hidden');
   } catch(e) {
-    $('homeSkeleton').classList.add('hidden');
+    $('homeSkeleton').innerHTML = `
+      <div class="col-span-full text-center py-12 text-ink-subtle text-sm">
+        뉴스를 불러오는 중 오류가 발생했습니다. 잠시 후 새로고침 해주세요.
+      </div>`;
   }
 }
 

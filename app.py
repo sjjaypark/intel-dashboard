@@ -5049,21 +5049,26 @@ async def suggest(q: str = Query(..., min_length=1)):
 
 @app.get("/api/home")
 async def get_home():
-    """홈 화면용 — 트렌딩 키워드 3개 + 주요 기업 3개, 각 뉴스 5건"""
+    """홈 화면 — Google RSS만 사용해 속도 최적화 (6개 병렬 요청)"""
     KEYWORDS  = ["AI 반도체", "2차전지", "휴머노이드"]
     COMPANIES = ["삼성전자", "SK하이닉스", "현대자동차"]
+    ALL = KEYWORDS + COMPANIES
 
-    kw_news, co_news = await asyncio.gather(
-        asyncio.gather(*[pipeline_news(k) for k in KEYWORDS]),
-        asyncio.gather(*[pipeline_news(c) for c in COMPANIES]),
-    )
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        results = await asyncio.gather(
+            *[news_google_rss(label, client, limit=10) for label in ALL],
+            return_exceptions=True,
+        )
+
     sections = []
-    for label, items in zip(KEYWORDS, kw_news):
-        for it in items: it.pop("_dt", None)
-        sections.append({"type":"keyword","label":label,"items":items[:5]})
-    for label, items in zip(COMPANIES, co_news):
-        for it in items: it.pop("_dt", None)
-        sections.append({"type":"company","label":label,"items":items[:5]})
+    for label, items in zip(ALL, results):
+        if isinstance(items, Exception) or not items:
+            items = []
+        for it in items:
+            it.pop("_dt", None)
+        t = "keyword" if label in KEYWORDS else "company"
+        sections.append({"type": t, "label": label, "items": items[:5]})
+
     return JSONResponse({"sections": sections,
                          "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")})
 
