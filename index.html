@@ -202,7 +202,7 @@
   </div>
 
   <!-- ══ 3-column 레이아웃 ══ -->
-  <div id="mainGrid" class="hidden grid gap-4 grid-cols-1 sm:grid-cols-[1fr_1fr_290px]">
+  <div id="mainGrid" style="display:none" class="grid gap-4 grid-cols-1 sm:grid-cols-[1fr_1fr_290px]">
 
     <!-- 뉴스 -->
     <div>
@@ -267,22 +267,6 @@
     </div>
   </div>
 
-  <!-- 스켈레톤 -->
-  <div id="skeletonGrid" class="hidden grid gap-4 grid-cols-1 sm:grid-cols-[1fr_1fr_290px]">
-    <div class="flex flex-col gap-2">
-      <div class="skeleton h-4 w-16 mb-1 rounded"></div>
-      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-4/5 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-3/4 rounded mt-1"></div></div>
-      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-2/3 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-4/5 rounded mt-1"></div></div>
-      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-3/4 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-1/2 rounded mt-1"></div></div>
-    </div>
-    <div class="flex flex-col gap-2">
-      <div class="skeleton h-4 w-20 mb-1 rounded"></div>
-      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-3/5 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-2/3 rounded mt-1"></div></div>
-      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-4/5 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-3/4 rounded mt-1"></div></div>
-      <div class="bg-white rounded-xl p-4 border border-surface-border"><div class="skeleton h-3 w-24 mb-2 rounded"></div><div class="skeleton h-4 w-full mb-1 rounded"></div><div class="skeleton h-4 w-1/2 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div><div class="skeleton h-3 w-4/5 rounded mt-1"></div></div>
-    </div>
-    <div class="bg-white rounded-xl border border-surface-border h-64 skeleton"></div>
-  </div>
 
 </main>
 
@@ -378,9 +362,10 @@ function goHome() {
   $('searchInput').value = '';
   hideSuggest();
   if (searchRefreshTimer) { clearTimeout(searchRefreshTimer); searchRefreshTimer = null; }
-  ['companyPanel','mainGrid','statusBar','emptyState','skeletonGrid','suggestCard'].forEach(id=>{
+  ['companyPanel','statusBar','emptyState','suggestCard'].forEach(id=>{
     const el=$(id); if(el) el.classList.add('hidden');
   });
+  $('mainGrid').style.display = 'none';
   $('welcomeScreen').classList.remove('hidden');
   history.replaceState(null,'',location.pathname);
   if (!homeRefreshTimer) homeRefreshTimer = setTimeout(()=>loadHomeData(true), HOME_REFRESH_MS);
@@ -545,12 +530,11 @@ async function runSearch() {
 
   if (searchMode === 'company') {
     // ── 회사 모드 ──────────────────────────────────────────────
-    ['mainGrid','emptyState','statusBar'].forEach(id => $(id).classList.add('hidden'));
-    $('skeletonGrid').classList.remove('hidden');
+    ['emptyState','statusBar'].forEach(id => $(id).classList.add('hidden'));
+    $('mainGrid').style.display = 'none';
     $('searchBtn').disabled = true;
     try {
       const cData = await fetch(`${API}/api/company?q=${encodeURIComponent(q)}`).then(r=>r.ok?r.json():null);
-      $('skeletonGrid').classList.add('hidden');
       $('searchBtn').disabled = false;
       if (cData && (cData.corp_info?.corp_name || cData.stock_code || cData.stock_data?.price)) {
         renderCompanyOverview(cData);
@@ -559,7 +543,6 @@ async function runSearch() {
         $('emptyState').classList.remove('hidden');
       }
     } catch(err) {
-      $('skeletonGrid').classList.add('hidden');
       $('searchBtn').disabled = false;
       $('emptyMsg').textContent = '회사 정보 조회 중 오류가 발생했습니다.';
       $('emptyState').classList.remove('hidden');
@@ -963,13 +946,12 @@ function toggleHolders() {
 }
 
 function showSkeleton() {
-  ['welcomeScreen','mainGrid','emptyState'].forEach(id=>$(id).classList.add('hidden'));
-  $('skeletonGrid').classList.remove('hidden');
-  $('statusBar').classList.add('hidden');
+  $('welcomeScreen').classList.add('hidden');
+  $('mainGrid').style.display = 'none';
+  ['emptyState','statusBar'].forEach(id=>$(id).classList.add('hidden'));
   $('searchBtn').disabled=true;
 }
 function hideSkeleton() {
-  $('skeletonGrid').classList.add('hidden');
   $('searchBtn').disabled=false;
 }
 
@@ -987,7 +969,7 @@ function renderResults(data) {
   $('statusCount').textContent = `뉴스 ${news.length} · 블로그 ${blog.length}`;
   $('statusTime').textContent  = timestamp ? `${timestamp} 기준` : '';
 
-  $('mainGrid').classList.remove('hidden');
+  $('mainGrid').style.display = '';
   $('suggestCard').classList.remove('hidden');
 
   _newsAll = news; _blogAll = blog;
