@@ -99,6 +99,10 @@
             class="px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:text-ink transition-all">
             🏢 <span class="hidden sm:inline">회사</span>
           </button>
+          <button id="modeUnlisted" onclick="setSearchMode('unlisted')"
+            class="px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:text-ink transition-all">
+            🔒 <span class="hidden sm:inline">비상장</span>
+          </button>
         </div>
         <div class="flex-1 relative">
           <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
@@ -296,19 +300,22 @@ const QUICK_TAGS = [
 
 const $ = id => document.getElementById(id);
 let currentData = null;
-let searchMode  = 'news'; // 'news' | 'company'
+let searchMode  = 'news'; // 'news' | 'company' | 'unlisted'
 
 function setSearchMode(mode) {
   searchMode = mode;
   hideSuggest();
-  const isNews = mode === 'news';
   const ON  = 'px-3 sm:px-4 py-1.5 text-xs font-bold rounded-lg bg-primary text-white shadow transition-all';
   const OFF = 'px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:text-ink transition-all';
-  $('modeNews').className    = isNews  ? ON : OFF;
-  $('modeCompany').className = !isNews ? ON : OFF;
-  $('searchInput').placeholder = isNews
-    ? '산업 키워드 입력 — 유리기판, ESS, 스페이스엑스...'
-    : '회사명 입력 — 삼성전자, 인벤티지랩, SK하이닉스...';
+  $('modeNews').className     = mode === 'news'     ? ON : OFF;
+  $('modeCompany').className  = mode === 'company'  ? ON : OFF;
+  $('modeUnlisted').className = mode === 'unlisted' ? ON : OFF;
+  const placeholders = {
+    news:     '산업 키워드 입력 — 유리기판, ESS, 스페이스엑스...',
+    company:  '회사명 입력 — 삼성전자, 인벤티지랩, SK하이닉스...',
+    unlisted: '비상장사명 입력 — 토스, SK온, 나노코어...',
+  };
+  $('searchInput').placeholder = placeholders[mode];
 }
 let bookmarks   = JSON.parse(localStorage.getItem('intel_bookmarks') || '[]');
 let history_    = JSON.parse(localStorage.getItem('intel_history')   || '[]');
@@ -487,7 +494,7 @@ async function onSearchInput() {
           m => `<span class="text-primary font-bold">${m}</span>`
         );
         return `<div class="suggest-item flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-surface-muted border-b border-surface-border last:border-0"
-             onmousedown="selectSuggest(${JSON.stringify(s.name)})">
+             onmousedown="selectSuggest(${JSON.stringify(s.name)}, ${!!s.is_unlisted})">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-1.5">
               <span class="text-sm font-semibold text-ink">${nameHtml}</span>
@@ -520,10 +527,10 @@ async function onSearchInput() {
   }, 150);
 }
 
-function selectSuggest(name) {
+function selectSuggest(name, isUnlisted) {
   $('searchInput').value = name;
   hideSuggest();
-  setSearchMode('company');
+  setSearchMode(isUnlisted ? 'unlisted' : 'company');
   runSearch();
 }
 
@@ -546,8 +553,8 @@ async function runSearch() {
   $('companyPanel').classList.add('hidden');
   $('companyPanel').innerHTML = '';
 
-  if (searchMode === 'company') {
-    // ── 회사 모드 ──────────────────────────────────────────────
+  if (searchMode === 'company' || searchMode === 'unlisted') {
+    // ── 회사 / 비상장사 모드 ───────────────────────────────────
     ['emptyState','statusBar'].forEach(id => $(id).classList.add('hidden'));
     $('mainGrid').style.display = 'none';
     $('searchBtn').disabled = true;
@@ -580,7 +587,7 @@ async function runSearch() {
   }
 
   // 검색 결과 자동 갱신 (뉴스만 — 재무 데이터는 제외)
-  if (searchMode !== 'company') {
+  if (searchMode === 'news') {
     searchRefreshTimer = setTimeout(refreshSearchNews, SEARCH_REFRESH_MS);
   }
 }
