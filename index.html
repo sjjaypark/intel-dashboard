@@ -90,13 +90,13 @@
 
       <!-- 2행: 모드탭 + 검색창 -->
       <div class="flex-1 flex items-center gap-2 sm:max-w-2xl">
-        <div class="flex rounded-lg border border-surface-border bg-surface-muted p-0.5 gap-0.5 flex-shrink-0">
+        <div class="flex rounded-xl border border-surface-border bg-surface-muted p-1 gap-1 flex-shrink-0">
           <button id="modeNews" onclick="setSearchMode('news')"
-            class="px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md bg-white text-primary shadow-sm transition-all">
+            class="px-3 sm:px-4 py-1.5 text-xs font-bold rounded-lg bg-primary text-white shadow transition-all">
             📰 <span class="hidden sm:inline">뉴스</span>
           </button>
           <button id="modeCompany" onclick="setSearchMode('company')"
-            class="px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md text-ink-muted hover:text-ink transition-all">
+            class="px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:text-ink transition-all">
             🏢 <span class="hidden sm:inline">회사</span>
           </button>
         </div>
@@ -302,12 +302,10 @@ function setSearchMode(mode) {
   searchMode = mode;
   hideSuggest();
   const isNews = mode === 'news';
-  $('modeNews').className    = isNews
-    ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-white text-primary shadow-sm transition-all'
-    : 'px-3 py-1.5 text-xs font-semibold rounded-md text-ink-muted hover:text-ink transition-all';
-  $('modeCompany').className = !isNews
-    ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-white text-primary shadow-sm transition-all'
-    : 'px-3 py-1.5 text-xs font-semibold rounded-md text-ink-muted hover:text-ink transition-all';
+  const ON  = 'px-3 sm:px-4 py-1.5 text-xs font-bold rounded-lg bg-primary text-white shadow transition-all';
+  const OFF = 'px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg text-ink-muted hover:text-ink transition-all';
+  $('modeNews').className    = isNews  ? ON : OFF;
+  $('modeCompany').className = !isNews ? ON : OFF;
   $('searchInput').placeholder = isNews
     ? '산업 키워드 입력 — 유리기판, ESS, 스페이스엑스...'
     : '회사명 입력 — 삼성전자, 인벤티지랩, SK하이닉스...';
