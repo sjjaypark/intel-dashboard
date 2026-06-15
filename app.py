@@ -1098,6 +1098,36 @@ async def get_company(q: str = Query(..., min_length=1)):
             "biz_info":    biz_info,
         })
 
+@app.get("/api/suggest")
+async def suggest(q: str = Query(..., min_length=1)):
+    """회사 이름 자동완성 — DART_CORP_MAP + COMPANY_INFO 에서 즉시 검색"""
+    q_lower = q.strip()
+    # 1. DART_CORP_MAP 에서 부분 매칭
+    results: list[dict] = []
+    seen: set[str] = set()
+    for name, (corp_code, stock_code) in DART_CORP_MAP.items():
+        if q_lower in name or name.startswith(q_lower):
+            if name not in seen:
+                seen.add(name)
+                info = COMPANY_INFO.get(name, {})
+                results.append({
+                    "name": name,
+                    "code": stock_code,
+                    "desc": info.get("desc",""),
+                })
+    # 2. COMPANY_INFO 에서 추가 (DART_CORP_MAP 에 없는 것)
+    for name, info in COMPANY_INFO.items():
+        if name not in seen and (q_lower in name or name.startswith(q_lower)):
+            seen.add(name)
+            results.append({
+                "name": name,
+                "code": info.get("code",""),
+                "desc": info.get("desc",""),
+            })
+    # 이름 길이 오름차순 (더 짧은 / 더 정확한 매칭 우선)
+    results.sort(key=lambda x: len(x["name"]))
+    return JSONResponse({"suggestions": results[:15]})
+
 @app.get("/api/health")
 async def health():
     return {"status":"ok","naver_api":bool(NAVER_CLIENT_ID)}
