@@ -225,11 +225,29 @@ def is_english(text: str) -> bool:
     alpha = re.findall(r'[a-zA-Z]', text)
     return len(alpha) / max(len(text),1) > 0.55
 
+def make_summary(title: str, desc: str) -> str:
+    """제목과 중복되지 않는 1줄 요약 생성"""
+    if not desc: return ""
+    desc = re.sub(r"<[^>]+>", "", desc)
+    desc = " ".join(desc.split()).strip()
+    if not desc: return ""
+    t = re.sub(r'\s+', '', (title or "").lower())
+    d = re.sub(r'\s+', '', desc.lower())
+    overlap = len(t) if len(t) < len(d) else len(d)
+    if overlap > 5 and d[:overlap] == t[:overlap]:
+        return ""
+    first = re.split(r'(?<=[.!?。…])\s', desc)[0].strip()
+    if len(first) > 90:
+        first = first[:87] + "…"
+    return first
+
 def make_item(title, link, desc, source, pub_raw, itype):
+    t = (title or "").strip()
+    d = (desc  or "").strip()
     return {
-        "title":   (title or "").strip(),
+        "title":   t,
         "link":    (link  or "").strip(),
-        "description": (desc or "").strip(),
+        "summary": make_summary(t, d),
         "source":  (source or "").strip(),
         "pubDate": fmt_date(pub_raw),
         "_dt":     parse_dt(pub_raw).timestamp(),
@@ -502,8 +520,7 @@ async def pipeline_news(query: str) -> list:
                                       news_naver_api(query,client),
                                       news_daum(query,client))
     all_items = sort_by_date(g+n+d)
-    relevant  = filter_by_relevance(all_items, query)
-    return dedup(relevant, limit=50)
+    return dedup(all_items, limit=50)
 
 async def pipeline_blog(query: str) -> list:
     async with httpx.AsyncClient(follow_redirects=True) as client:
@@ -511,8 +528,7 @@ async def pipeline_blog(query: str) -> list:
                                          blog_google_rss(query,client),
                                          blog_naver_scrape(query,client))
     all_items = sort_by_date(na+gb+ns)
-    relevant  = filter_by_relevance(all_items, query, min_score=2)
-    return dedup(relevant, limit=50)
+    return dedup(all_items, limit=50)
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  DART 전자공시 API

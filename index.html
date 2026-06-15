@@ -872,6 +872,9 @@ function hideSkeleton() {
 }
 
 // ── 결과 렌더링 ───────────────────────────────────────────────────────────────
+const PAGE_SIZE = 10;
+let _newsAll = [], _blogAll = [], _newsPage = 1, _blogPage = 1;
+
 function renderResults(data) {
   hideSkeleton();
   const {query,news=[],blog=[],companies=[],total,timestamp}=data;
@@ -885,12 +888,53 @@ function renderResults(data) {
   $('mainGrid').classList.remove('hidden');
   $('suggestCard').classList.remove('hidden');
 
-  $('newsCount').textContent = `${news.length}건`;
-  $('blogCount').textContent = `${blog.length}건`;
-  $('newsCards').innerHTML   = news.map((it,i)=>buildCard(it,i)).join('');
-  $('blogCards').innerHTML   = blog.map((it,i)=>buildCard(it,i)).join('');
-
+  _newsAll = news; _blogAll = blog;
+  _newsPage = 1;   _blogPage = 1;
+  renderPage('news'); renderPage('blog');
   renderCompanies(companies, query);
+}
+
+function renderPage(type) {
+  const all  = type === 'news' ? _newsAll : _blogAll;
+  const page = type === 'news' ? _newsPage : _blogPage;
+  const total = all.length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const start = (page - 1) * PAGE_SIZE;
+  const items = all.slice(start, start + PAGE_SIZE);
+
+  const cardsEl = $(type === 'news' ? 'newsCards' : 'blogCards');
+  const countEl = $(type === 'news' ? 'newsCount' : 'blogCount');
+  countEl.textContent = `${total}건`;
+  cardsEl.innerHTML = items.map((it,i) => buildCard(it, start + i)).join('');
+
+  // 페이지네이션
+  const pagId = type + 'Pager';
+  let pager = $(pagId);
+  if (!pager) {
+    pager = document.createElement('div');
+    pager.id = pagId;
+    cardsEl.parentNode.appendChild(pager);
+  }
+  if (totalPages <= 1) { pager.innerHTML = ''; return; }
+
+  const pages = [];
+  for (let p = 1; p <= totalPages; p++) pages.push(p);
+  pager.className = 'flex flex-wrap gap-1.5 mt-3 justify-center';
+  pager.innerHTML = pages.map(p => `
+    <button onclick="goPage('${type}',${p})"
+      class="w-8 h-8 text-xs font-semibold rounded-lg border transition-colors ${p===page
+        ? 'bg-primary text-white border-primary'
+        : 'bg-white text-ink-muted border-surface-border hover:border-primary hover:text-primary'}">${p}</button>
+  `).join('');
+}
+
+function goPage(type, page) {
+  if (type === 'news') _newsPage = page;
+  else _blogPage = page;
+  renderPage(type);
+  // 해당 컬럼 상단으로 스크롤
+  const el = $(type === 'news' ? 'newsCards' : 'blogCards');
+  if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 // ── 기사 카드 ─────────────────────────────────────────────────────────────────
@@ -903,8 +947,8 @@ function buildCard(item, index) {
   const src  = item.source ? `<span class="font-semibold text-primary truncate max-w-[100px] flex-shrink-0">${esc(item.source)}</span>` : '';
   const date = item.pubDate ? `<span class="text-ink-subtle flex-shrink-0 ml-auto">${esc(item.pubDate)}</span>` : '';
   const sep  = src && date ? `<span class="text-surface-border flex-shrink-0">·</span>` : '';
-  const desc = item.description
-    ? `<p class="line-clamp-2 text-[11px] text-ink-subtle mt-1.5 leading-relaxed">${esc(item.description)}</p>` : '';
+  const desc = item.summary
+    ? `<p class="line-clamp-1 text-[11px] text-ink-subtle mt-1 leading-relaxed">${esc(item.summary)}</p>` : '';
   const saved = isBookmarked(item.link);
 
   return `
