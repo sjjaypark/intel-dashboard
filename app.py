@@ -228,18 +228,28 @@ def is_english(text: str) -> bool:
 def make_summary(title: str, desc: str) -> str:
     """제목과 중복되지 않는 1줄 요약 생성"""
     if not desc: return ""
+    # HTML 제거 + 엔티티 변환
     desc = re.sub(r"<[^>]+>", "", desc)
+    for e, c in [("&quot;",'"'),("&amp;","&"),("&#39;","'"),("&lt;","<"),("&gt;",">"),("&nbsp;"," ")]:
+        desc = desc.replace(e, c)
     desc = " ".join(desc.split()).strip()
     if not desc: return ""
-    t = re.sub(r'\s+', '', (title or "").lower())
-    d = re.sub(r'\s+', '', desc.lower())
-    overlap = len(t) if len(t) < len(d) else len(d)
-    if overlap > 5 and d[:overlap] == t[:overlap]:
-        return ""
-    first = re.split(r'(?<=[.!?。…])\s', desc)[0].strip()
+    # 제목이 desc 앞부분과 겹치면 구분자(- · | …) 이후 내용 사용
+    t_norm = re.sub(r'[\s\W]+', '', (title or "").lower())
+    d_norm = re.sub(r'[\s\W]+', '', desc.lower())
+    if len(t_norm) > 5 and d_norm.startswith(t_norm[:len(t_norm)]):
+        remainder = re.split(r'\s*[-·|…—]\s*', desc, maxsplit=1)
+        if len(remainder) > 1 and len(remainder[1].strip()) > 8:
+            desc = remainder[1].strip()
+        else:
+            return ""
+    # 첫 문장, 최대 90자
+    first = re.split(r'(?<=[.!?。])\s+', desc)[0].strip()
+    if not first:
+        first = desc
     if len(first) > 90:
         first = first[:87] + "…"
-    return first
+    return first if len(first) > 5 else ""
 
 def make_item(title, link, desc, source, pub_raw, itype):
     t = (title or "").strip()

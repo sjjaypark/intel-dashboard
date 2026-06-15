@@ -424,7 +424,6 @@ let _suggestTimer = null;
 function hideSuggest() { $('suggestDropdown').classList.add('hidden'); $('suggestDropdown').innerHTML=''; }
 
 async function onSearchInput() {
-  if (searchMode !== 'company') { hideSuggest(); return; }
   const q = $('searchInput').value.trim();
   if (!q || q.length < 1) { hideSuggest(); return; }
   clearTimeout(_suggestTimer);
@@ -434,23 +433,29 @@ async function onSearchInput() {
       const items = data?.suggestions || [];
       if (!items.length) { hideSuggest(); return; }
       const dd = $('suggestDropdown');
-      dd.innerHTML = items.map(s => `
-        <div class="suggest-item flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-surface-muted border-b border-surface-border last:border-0"
-             onclick="selectSuggest(${JSON.stringify(s.name)})">
+      dd.innerHTML = items.map(s => {
+        const nameHtml = esc(s.name).replace(
+          new RegExp(esc(q),'gi'),
+          m => `<span class="text-primary font-bold">${m}</span>`
+        );
+        return `<div class="suggest-item flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-surface-muted border-b border-surface-border last:border-0"
+             onmousedown="selectSuggest(${JSON.stringify(s.name)})">
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold text-ink">${esc(s.name)}</div>
+            <div class="text-sm font-semibold text-ink">${nameHtml}</div>
             ${s.desc ? `<div class="text-xs text-ink-subtle truncate">${esc(s.desc)}</div>` : ''}
           </div>
           ${s.code ? `<span class="text-xs font-mono text-ink-subtle shrink-0">${esc(s.code)}</span>` : ''}
-        </div>`).join('');
+        </div>`;
+      }).join('');
       dd.classList.remove('hidden');
     } catch { hideSuggest(); }
-  }, 200);
+  }, 150);
 }
 
 function selectSuggest(name) {
   $('searchInput').value = name;
   hideSuggest();
+  setSearchMode('company');
   runSearch();
 }
 
