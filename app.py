@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 NAVER_CLIENT_ID     = os.getenv("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+KRX_API_KEY         = os.getenv("KRX_API_KEY", "")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -798,6 +799,54 @@ async def _search_holders_web(company: str, client) -> list:
         logger.warning(f"Web holders search: {e}")
         return []
 
+async def _krx_info(code: str, name: str, client) -> dict:
+    """금융위원회 KRX 상장종목정보 API — 상장일·시장구분·ISIN 등"""
+    if not KRX_API_KEY: return {}
+    result = {}
+    today = datetime.now().strftime("%Y%m%d")
+    # 종목코드로 먼저 시도, 없으면 종목명으로
+    queries = []
+    if code: queries.append({"srtnCd": code})
+    if name: queries.append({"itmsNm": name})
+    for extra in queries:
+        try:
+            r = await client.get(
+                "https://apis.data.go.kr/1160100/service/GetKrxListedInfoService/getItemInfo",
+                params={"serviceKey": KRX_API_KEY, "numOfRows": "5",
+                        "pageNo": "1", "resultType": "json",
+                        "basDt": today, **extra},
+                timeout=8.0)
+            if r.status_code != 200:
+                logger.warning(f"KRX API {r.status_code}: {r.text[:100]}")
+                continue
+            items = r.json().get("response",{}).get("body",{}).get("items",{})
+            lst = items.get("item",[]) if isinstance(items, dict) else []
+            if isinstance(lst, dict): lst = [lst]
+            if not lst: continue
+            # 코드 검색 시 정확 매칭, 이름 검색 시 첫 번째
+            hit = lst[0]
+            for item in lst:
+                if code and item.get("srtnCd","").strip().lstrip("0") == code.lstrip("0"):
+                    hit = item; break
+                if name and name in item.get("itmsNm",""):
+                    hit = item; break
+            lstg_raw = hit.get("lstgDt","")
+            mrkt     = hit.get("mrktCtg","")
+            isin     = hit.get("isinCd","")
+            corp_nm  = hit.get("corpNm","") or hit.get("itmsNm","")
+            result = {
+                "listing_dt": f"{lstg_raw[:4]}.{lstg_raw[4:6]}.{lstg_raw[6:]}" if len(lstg_raw)==8 else lstg_raw,
+                "mrkt_ctg":   mrkt,
+                "isin":       isin,
+                "corp_nm_krx":corp_nm,
+                "srtn_cd":    hit.get("srtnCd","").strip(),
+            }
+            logger.info(f"KRX hit: {corp_nm} {mrkt} {lstg_raw}")
+            break
+        except Exception as e:
+            logger.warning(f"KRX info ({extra}): {e}")
+    return result
+
 async def _naver_coinfo(code: str, client) -> dict:
     """네이버 증권 coinfo 페이지 한 번에 스크래핑 (기업개요·시총·주식수·외국인비율)"""
     result = {"overview": "", "products": [], "segments": [],
@@ -980,7 +1029,8 @@ async def get_company(q: str = Query(..., min_length=1)):
             _dart_info(corp_code, client),
             _dart_holders(corp_code, cur-1, client),
             _naver_metrics(stock_code, client),
-            _naver_coinfo(stock_code, client),  # 기업개요+시총+주식수+외국인
+            _naver_coinfo(stock_code, client),           # 기업개요+시총+주식수+외국인
+            _krx_info(stock_code, q, client),            # 상장일·시장구분·ISIN
             *[_dart_fs(corp_code, y, "11011", client) for y in annual_years],
             *[_dart_fs(corp_code, y, r,       client) for y,r in q_specs],
             return_exceptions=True,
@@ -990,11 +1040,22 @@ async def get_company(q: str = Query(..., min_length=1)):
         dart_holders = results[1] if isinstance(results[1], list) else []
         stock_data   = results[2] if isinstance(results[2], dict) else {}
         naver_ci     = results[3] if isinstance(results[3], dict) else {}
+        krx_data     = results[4] if isinstance(results[4], dict) else {}
 
         # 네이버 코인포에서 시가총액·주식수·외국인비율
         stock_data["market_cap"]    = naver_ci.get("market_cap","")
         stock_data["issued_shares"] = naver_ci.get("issued_shares","")
         stock_data["foreign_ratio"] = naver_ci.get("foreign_ratio","")
+        # KRX에서 상장일·시장구분 보완
+        if krx_data.get("listing_dt"):
+            corp_info["listing_dt"] = krx_data["listing_dt"]
+        if krx_data.get("mrkt_ctg") and not corp_info.get("corp_cls"):
+            corp_info["corp_cls"] = krx_data["mrkt_ctg"]
+        if krx_data.get("isin"):
+            corp_info["isin"] = krx_data["isin"]
+        # stock_code가 없으면 KRX에서 보완
+        if not stock_code and krx_data.get("srtn_cd"):
+            stock_code = krx_data["srtn_cd"]
         # 사업정보
         biz_info = {"overview": naver_ci.get("overview",""),
                     "products": naver_ci.get("products",[]),
@@ -1005,8 +1066,8 @@ async def get_company(q: str = Query(..., min_length=1)):
             holders = dart_holders
         else:
             holders = await _search_holders_web(q, client)
-        raw_ann = results[4:4+len(annual_years)]
-        raw_qtr = results[4+len(annual_years):]
+        raw_ann = results[5:5+len(annual_years)]
+        raw_qtr = results[5+len(annual_years):]
 
         # 연간 재무 파싱
         annual_fs = []
