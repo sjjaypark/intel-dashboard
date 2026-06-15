@@ -58,17 +58,18 @@
       <!-- 1행: 로고 + 우측 버튼들 -->
       <div class="flex items-center justify-between sm:justify-start sm:gap-4">
         <!-- 로고 -->
-        <div class="flex items-center gap-2 flex-shrink-0">
-          <div class="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
-            <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-            </svg>
-          </div>
+        <button onclick="goHome()" class="flex items-center gap-2.5 flex-shrink-0 hover:opacity-80 transition-opacity">
+          <!-- 로고마크: F 원형 -->
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="15" stroke="#7C5A2A" stroke-width="1.8" fill="white"/>
+            <text x="9" y="22" font-family="Georgia,serif" font-size="16" font-weight="bold" fill="#3D2B0E">F</text>
+            <circle cx="20" cy="19" r="2.2" fill="#8B1A1A"/>
+          </svg>
           <div class="leading-none">
-            <div class="text-xs font-extrabold text-ink tracking-tight">INTEL</div>
-            <div class="text-[10px] text-ink-subtle">Dashboard</div>
+            <div class="text-sm font-bold tracking-widest text-ink" style="letter-spacing:0.12em">FORGED</div>
+            <div class="text-[10px] font-semibold tracking-widest text-ink-muted" style="letter-spacing:0.18em">CAPITAL</div>
           </div>
-        </div>
+        </button>
         <!-- 우측 버튼 (모바일에서 로고 옆, 데스크톱에서 오른쪽 끝) -->
         <div class="flex items-center gap-1.5 sm:hidden">
           <button onclick="toggleBookmarkView()"
@@ -266,38 +267,21 @@
     <div class="bg-white rounded-xl border border-surface-border h-64 skeleton"></div>
   </div>
 
-  <!-- 웰컴 -->
-  <div id="welcomeScreen" class="py-14 text-center">
-    <div class="w-14 h-14 bg-primary/8 rounded-3xl flex items-center justify-center mx-auto mb-4">
-      <svg class="w-7 h-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-      </svg>
+  <!-- 홈 화면 -->
+  <div id="welcomeScreen">
+    <!-- 로딩 스켈레톤 -->
+    <div id="homeSkeleton" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
+      <div class="bg-white rounded-xl border border-surface-border p-4"><div class="skeleton h-4 w-24 mb-3 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-5/6 mb-2 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-4/5 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div></div>
+      <div class="bg-white rounded-xl border border-surface-border p-4"><div class="skeleton h-4 w-24 mb-3 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-3/4 mb-2 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-5/6 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div></div>
+      <div class="bg-white rounded-xl border border-surface-border p-4"><div class="skeleton h-4 w-24 mb-3 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-4/5 mb-2 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-3/4 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div></div>
+      <div class="bg-white rounded-xl border border-surface-border p-4"><div class="skeleton h-4 w-24 mb-3 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-5/6 mb-2 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-4/5 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div></div>
+      <div class="bg-white rounded-xl border border-surface-border p-4"><div class="skeleton h-4 w-24 mb-3 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-3/4 mb-2 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-5/6 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div></div>
+      <div class="bg-white rounded-xl border border-surface-border p-4"><div class="skeleton h-4 w-24 mb-3 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-4/5 mb-2 rounded"></div><div class="skeleton h-3 w-full mb-2 rounded"></div><div class="skeleton h-3 w-3/4 mb-2 rounded"></div><div class="skeleton h-3 w-full rounded"></div></div>
     </div>
-    <h1 class="text-xl sm:text-2xl font-bold text-ink mb-2">산업 인텔리전스 대시보드</h1>
-    <p class="text-ink-muted text-sm max-w-sm mx-auto leading-relaxed mb-6">
-      키워드로 최신 뉴스·블로그 수집 + 관련 상장사 실시간 주가 연동
-    </p>
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-xl mx-auto text-left">
-      <div class="bg-white rounded-xl p-3.5 border border-surface-border">
-        <div class="text-lg mb-1">📰</div>
-        <div class="text-xs font-semibold text-ink mb-0.5">뉴스 + 블로그</div>
-        <div class="text-[11px] text-ink-subtle">최대 100건 최신순</div>
-      </div>
-      <div class="bg-white rounded-xl p-3.5 border border-surface-border">
-        <div class="text-lg mb-1">📈</div>
-        <div class="text-xs font-semibold text-ink mb-0.5">실시간 주가</div>
-        <div class="text-[11px] text-ink-subtle">관련주 등락률 표시</div>
-      </div>
-      <div class="bg-white rounded-xl p-3.5 border border-surface-border">
-        <div class="text-lg mb-1">🔖</div>
-        <div class="text-xs font-semibold text-ink mb-0.5">북마크</div>
-        <div class="text-[11px] text-ink-subtle">기사 저장 & 모아보기</div>
-      </div>
-      <div class="bg-white rounded-xl p-3.5 border border-surface-border">
-        <div class="text-lg mb-1">📤</div>
-        <div class="text-xs font-semibold text-ink mb-0.5">내보내기</div>
-        <div class="text-[11px] text-ink-subtle">CSV 다운로드·URL 공유</div>
-      </div>
+    <!-- 로드된 콘텐츠 -->
+    <div id="homeContent" class="hidden">
+      <div id="homeTimestamp" class="text-[11px] text-ink-subtle text-right mb-2"></div>
+      <div id="homeSections" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
     </div>
   </div>
 </main>
@@ -380,6 +364,59 @@ function init() {
   // URL 해시에서 검색어 복원
   const hash = decodeURIComponent(location.hash.replace('#q=',''));
   if (hash) { $('searchInput').value = hash; runSearch(); }
+  else loadHomeData();
+}
+
+// ── 홈 ───────────────────────────────────────────────────────────────────────
+function goHome() {
+  $('searchInput').value = '';
+  hideSuggest();
+  ['companyPanel','mainGrid','statusBar','emptyState','skeletonGrid','suggestCard'].forEach(id=>{
+    const el=$(id); if(el) el.classList.add('hidden');
+  });
+  $('welcomeScreen').classList.remove('hidden');
+  history.replaceState(null,'',location.pathname);
+}
+
+async function loadHomeData() {
+  try {
+    const data = await fetch(`${API}/api/home`).then(r=>r.ok?r.json():null);
+    if (!data) return;
+    $('homeSkeleton').classList.add('hidden');
+    if (data.timestamp) $('homeTimestamp').textContent = `${data.timestamp} 기준`;
+
+    const TYPE_ICON = { keyword:'🔍', company:'🏢' };
+    const TYPE_COLOR = { keyword:'text-primary', company:'text-emerald-700' };
+
+    $('homeSections').innerHTML = (data.sections||[]).map(sec => `
+      <div class="bg-white border border-surface-border rounded-xl overflow-hidden shadow-sm">
+        <div class="px-4 py-2.5 border-b border-surface-border bg-surface-muted/60 flex items-center gap-2">
+          <span>${TYPE_ICON[sec.type]||'📰'}</span>
+          <button class="text-sm font-bold ${TYPE_COLOR[sec.type]} hover:underline"
+                  onclick="searchTag('${esc(sec.label)}')">${esc(sec.label)}</button>
+        </div>
+        <div class="divide-y divide-surface-border">
+          ${(sec.items||[]).map(it=>`
+            <a href="${esc(it.link||'#')}" target="_blank" rel="noopener noreferrer"
+               class="block px-4 py-2.5 hover:bg-surface-muted/50 transition-colors group">
+              <p class="text-[12px] font-semibold text-ink leading-snug line-clamp-2 group-hover:text-primary transition-colors">${esc(it.title||'')}</p>
+              ${it.summary ? `<p class="text-[11px] text-ink-subtle mt-0.5 line-clamp-1">${esc(it.summary)}</p>` : ''}
+              <div class="flex items-center gap-1.5 mt-1 text-[10px] text-ink-subtle">
+                ${it.source ? `<span class="font-medium text-primary/80">${esc(it.source)}</span><span>·</span>` : ''}
+                ${it.pubDate ? `<span>${esc(it.pubDate)}</span>` : ''}
+              </div>
+            </a>`).join('')}
+        </div>
+        <div class="px-4 py-2 border-t border-surface-border">
+          <button onclick="searchTag('${esc(sec.label)}')"
+            class="text-[11px] text-primary font-semibold hover:underline">전체 뉴스 보기 →</button>
+        </div>
+      </div>`).join('');
+
+    $('homeContent').classList.remove('hidden');
+  } catch(e) {
+    $('homeSkeleton').classList.add('hidden');
+  }
 }
 
 async function checkApiStatus() {
